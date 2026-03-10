@@ -65,6 +65,12 @@ Codex runtime on the machine
     - `turn/start`
     - `command/exec`
 
+- `bridge/events.py`
+  - stable internal event model for streamed bridge activity
+
+- `bridge/translator.py`
+  - translates upstream JSON-RPC messages into bridge events
+
 - `http/api.py`
   - exposes a simple HTTP layer on top of `bridge/service.py`
 

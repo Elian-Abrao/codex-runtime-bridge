@@ -69,7 +69,9 @@ src/codex_runtime_bridge/
   transport/
     rpc.py
   bridge/
+    events.py
     service.py
+    translator.py
   http/
     api.py
     client.py

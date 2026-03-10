@@ -87,6 +87,7 @@ The repository already has a functional first vertical slice:
 - list models from the real runtime
 - start threads
 - run turns and stream real turn events
+- surface upstream server requests such as approvals and tool input prompts
 - execute `command/exec`
 - expose the same capabilities through:
   - CLI
@@ -233,6 +234,19 @@ curl -N -X POST http://127.0.0.1:8787/v1/chat/stream \
   }'
 ```
 
+Respond to an upstream server request such as an approval:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/server-requests/respond \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "requestId": "req_1",
+    "result": {
+      "decision": "approve"
+    }
+  }'
+```
+
 Exec:
 
 ```bash
@@ -296,6 +310,10 @@ The current implementation is intentionally thin:
   - stdio JSON-RPC client for `codex app-server`
 - [`bridge/service.py`](./src/codex_runtime_bridge/bridge/service.py)
   - bridge methods on top of the official runtime
+- [`bridge/events.py`](./src/codex_runtime_bridge/bridge/events.py)
+  - stable internal event model for streamed bridge activity
+- [`bridge/translator.py`](./src/codex_runtime_bridge/bridge/translator.py)
+  - translation from upstream JSON-RPC messages into bridge events
 - [`http/api.py`](./src/codex_runtime_bridge/http/api.py)
   - HTTP facade on top of the same bridge service
 - [`http/client.py`](./src/codex_runtime_bridge/http/client.py)
@@ -308,6 +326,7 @@ The current implementation is intentionally thin:
 Additional design documents:
 
 - [Architecture](./docs/ARCHITECTURE.md)
+- [Implementation Map](./docs/IMPLEMENTATION_MAP.md)
 - [Deployment](./docs/DEPLOYMENT.md)
 - [Roadmap](./docs/ROADMAP.md)
 
