@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from codex_runtime_bridge.service import CodexBridgeService
+from codex_runtime_bridge.bridge import CodexBridgeService
 
 
 class FakeConnection:

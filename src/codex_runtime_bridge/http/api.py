@@ -7,13 +7,13 @@ from typing import Any, AsyncIterator
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
+from ..bridge import CodexBridgeService
 from .schemas import ChatRequest
 from .schemas import ChatResponse
 from .schemas import CommandExecRequest
 from .schemas import HealthResponse
 from .schemas import LoginStartResponse
 from .schemas import ThreadStartRequest
-from .service import CodexBridgeService
 
 
 def _sse(message: dict[str, Any]) -> bytes:

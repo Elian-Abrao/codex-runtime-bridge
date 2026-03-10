@@ -50,12 +50,12 @@ Codex runtime on the machine
 
 ## Current Modules
 
-- `rpc.py`
+- `transport/rpc.py`
   - manages the `codex app-server` subprocess
   - sends JSON-RPC requests over stdio
   - receives responses and notifications
 
-- `service.py`
+- `bridge/service.py`
   - maps bridge use cases onto upstream methods
   - examples:
     - `account/read`
@@ -65,14 +65,20 @@ Codex runtime on the machine
     - `turn/start`
     - `command/exec`
 
-- `api.py`
-  - exposes a simple HTTP layer on top of `service.py`
+- `http/api.py`
+  - exposes a simple HTTP layer on top of `bridge/service.py`
 
-- `http_client.py`
+- `http/client.py`
   - client SDK for the HTTP layer
 
-- `cli.py`
+- `http/schemas.py`
+  - Pydantic request and response contracts for the HTTP layer
+
+- `cli/main.py`
   - operational CLI for smoke testing and basic use
+
+- `cli/render.py`
+  - terminal rendering for streamed chat events
 
 ## Design Direction
 
@@ -88,4 +94,3 @@ It should not evolve toward:
 1. a second Codex runtime
 2. a parallel auth/session/tool implementation
 3. a highly opinionated end-user assistant product
-

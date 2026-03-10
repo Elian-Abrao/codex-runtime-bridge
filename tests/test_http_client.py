@@ -4,7 +4,7 @@ import unittest
 
 import httpx
 
-from codex_runtime_bridge.http_client import BridgeHttpClient
+from codex_runtime_bridge.http import BridgeHttpClient
 
 
 class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):

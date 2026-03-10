@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .version import __version__
+from ..version import __version__
 
 JsonDict = dict[str, Any]
 

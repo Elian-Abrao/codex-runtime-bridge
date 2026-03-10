@@ -292,16 +292,18 @@ asyncio.run(main())
 
 The current implementation is intentionally thin:
 
-- [`rpc.py`](./src/codex_runtime_bridge/rpc.py)
+- [`transport/rpc.py`](./src/codex_runtime_bridge/transport/rpc.py)
   - stdio JSON-RPC client for `codex app-server`
-- [`service.py`](./src/codex_runtime_bridge/service.py)
+- [`bridge/service.py`](./src/codex_runtime_bridge/bridge/service.py)
   - bridge methods on top of the official runtime
-- [`api.py`](./src/codex_runtime_bridge/api.py)
+- [`http/api.py`](./src/codex_runtime_bridge/http/api.py)
   - HTTP facade on top of the same bridge service
-- [`http_client.py`](./src/codex_runtime_bridge/http_client.py)
+- [`http/client.py`](./src/codex_runtime_bridge/http/client.py)
   - HTTP client SDK
-- [`cli.py`](./src/codex_runtime_bridge/cli.py)
+- [`cli/main.py`](./src/codex_runtime_bridge/cli/main.py)
   - terminal UX for login, models, chat, exec, and serve
+- [`cli/render.py`](./src/codex_runtime_bridge/cli/render.py)
+  - terminal rendering for incremental chat events
 
 Additional design documents:
 

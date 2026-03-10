@@ -66,12 +66,17 @@ src/codex_runtime_bridge/
   __init__.py
   __main__.py
   version.py
-  rpc.py
-  service.py
-  api.py
-  http_client.py
-  cli.py
-  schemas.py
+  transport/
+    rpc.py
+  bridge/
+    service.py
+  http/
+    api.py
+    client.py
+    schemas.py
+  cli/
+    main.py
+    render.py
 tests/
 ```
 
@@ -121,4 +126,3 @@ codex-runtime-bridge exec -- pwd
 - this repo is the adapter layer
 - if you find yourself rebuilding upstream runtime behavior here, stop and reassess
 - a future personal agent product should consume this repository instead of replacing it
-

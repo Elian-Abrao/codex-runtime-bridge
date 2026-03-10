@@ -6,7 +6,10 @@ import webbrowser
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from .rpc import AppServerConnection, AppServerOptions, JsonDict, normalize_cwd
+from ..transport import AppServerConnection
+from ..transport import AppServerOptions
+from ..transport import JsonDict
+from ..transport import normalize_cwd
 
 
 class CodexBridgeService:
