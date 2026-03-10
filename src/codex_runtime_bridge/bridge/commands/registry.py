@@ -178,6 +178,124 @@ async def _handle_skills(
     )
 
 
+async def _handle_experimental(
+    service: CodexBridgeService,
+    command: ParsedSlashCommand,
+    context: SlashCommandContext,
+) -> SlashCommandResult:
+    cursor: str | None = None
+    limit: int | None = None
+    index = 0
+    while index < len(command.args):
+        argument = command.args[index]
+        if argument == "--cursor":
+            index += 1
+            if index >= len(command.args):
+                raise ValueError("usage: /experimental [--limit <count>] [--cursor <cursor>]")
+            cursor = command.args[index]
+        elif argument == "--limit":
+            index += 1
+            if index >= len(command.args):
+                raise ValueError("usage: /experimental [--limit <count>] [--cursor <cursor>]")
+            try:
+                limit = int(command.args[index])
+            except ValueError as exc:
+                raise ValueError("/experimental --limit must be an integer") from exc
+        else:
+            raise ValueError("usage: /experimental [--limit <count>] [--cursor <cursor>]")
+        index += 1
+
+    result = await service.list_experimental_features(cursor=cursor, limit=limit)
+    features = result.get("data", [])
+
+    if not features:
+        message = "No experimental features found."
+    else:
+        lines = ["Experimental features:"]
+        for feature in features:
+            label = feature.get("displayName") or feature["name"]
+            stage = feature.get("stage", "unknown")
+            status = "enabled" if feature.get("enabled") else "disabled"
+            description = feature.get("description") or ""
+            suffix = f" - {description}" if description else ""
+            lines.append(f"- {label} ({feature['name']}) [{stage}] {status}{suffix}")
+        next_cursor = result.get("nextCursor")
+        if next_cursor:
+            lines.append(f"Next cursor: {next_cursor}")
+        message = "\n".join(lines)
+
+    return SlashCommandResult(
+        name="experimental",
+        message=message,
+        data=result,
+        thread_id=context.thread_id,
+    )
+
+
+def _parse_review_target(arguments: list[str]) -> dict[str, Any]:
+    if not arguments:
+        return {"type": "uncommittedChanges"}
+    if arguments[0] == "branch" and len(arguments) == 2:
+        return {"type": "baseBranch", "branch": arguments[1]}
+    if arguments[0] == "commit" and len(arguments) == 2:
+        return {"type": "commit", "sha": arguments[1]}
+    if arguments[0] == "custom" and len(arguments) >= 2:
+        return {"type": "custom", "instructions": " ".join(arguments[1:])}
+    raise ValueError(
+        "usage: /review [--detached] [branch <name> | commit <sha> | custom <instructions>]"
+    )
+
+
+def _describe_review_target(target: dict[str, Any]) -> str:
+    target_type = target["type"]
+    if target_type == "uncommittedChanges":
+        return "uncommitted changes"
+    if target_type == "baseBranch":
+        return f"changes against branch {target['branch']}"
+    if target_type == "commit":
+        return f"commit {target['sha']}"
+    if target_type == "custom":
+        return "custom review instructions"
+    return target_type
+
+
+async def _handle_review(
+    service: CodexBridgeService,
+    command: ParsedSlashCommand,
+    context: SlashCommandContext,
+) -> SlashCommandResult:
+    if not context.thread_id:
+        raise ValueError("/review requires an active thread")
+
+    detached = False
+    arguments: list[str] = []
+    for argument in command.args:
+        if argument == "--detached":
+            detached = True
+            continue
+        arguments.append(argument)
+
+    target = _parse_review_target(arguments)
+    delivery = "detached" if detached else "inline"
+    result = await service.start_review(
+        thread_id=context.thread_id,
+        target=target,
+        delivery=delivery,
+    )
+    review_thread_id = result["reviewThreadId"]
+    mode = "detached" if detached else "inline"
+    message = (
+        f"Started {mode} review for {_describe_review_target(target)}. "
+        f"Review thread: {review_thread_id}."
+    )
+    return SlashCommandResult(
+        name="review",
+        message=message,
+        data=result,
+        thread_id=review_thread_id,
+    )
+
+
 async def _handle_logout(
     service: CodexBridgeService,
     command: ParsedSlashCommand,
@@ -228,6 +346,22 @@ _COMMANDS: dict[str, RegisteredSlashCommand] = {
             summary="List skills available for the current workspace.",
         ),
         handler=_handle_skills,
+    ),
+    "experimental": RegisteredSlashCommand(
+        spec=SlashCommandSpec(
+            name="experimental",
+            usage="/experimental [--limit <count>] [--cursor <cursor>]",
+            summary="List experimental features from the current Codex config.",
+        ),
+        handler=_handle_experimental,
+    ),
+    "review": RegisteredSlashCommand(
+        spec=SlashCommandSpec(
+            name="review",
+            usage="/review [--detached] [branch <name> | commit <sha> | custom <instructions>]",
+            summary="Start a review on the current thread.",
+        ),
+        handler=_handle_review,
     ),
     "logout": RegisteredSlashCommand(
         spec=SlashCommandSpec(

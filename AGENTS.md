@@ -129,3 +129,4 @@ codex-runtime-bridge exec -- pwd
 - this repo is the adapter layer
 - if you find yourself rebuilding upstream runtime behavior here, stop and reassess
 - a future personal agent product should consume this repository instead of replacing it
+- slash commands in this repo should prefer thin handlers over recreating CLI-only behavior end to end

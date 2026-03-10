@@ -104,3 +104,11 @@ class SlashCommandExecuteResponse(BaseModel):
     thread_id: str | None = Field(default=None, alias="threadId")
 
     model_config = {"populate_by_name": True}
+
+
+class ReviewStartRequest(BaseModel):
+    thread_id: str = Field(alias="threadId")
+    target: dict[str, Any]
+    delivery: str | None = None
+
+    model_config = {"populate_by_name": True}

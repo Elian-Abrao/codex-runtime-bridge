@@ -170,6 +170,8 @@ Inside interactive chat, the bridge currently supports:
 /new
 /rename <name>
 /skills [--reload]
+/experimental [--limit <count>] [--cursor <cursor>]
+/review [--detached] [branch <name> | commit <sha> | custom <instructions>]
 /logout
 ```
 
@@ -271,6 +273,26 @@ curl -X POST http://127.0.0.1:8787/v1/slash-commands/execute \
   -H 'Content-Type: application/json' \
   -d '{
     "command": "/skills"
+  }'
+```
+
+List experimental features directly:
+
+```bash
+curl 'http://127.0.0.1:8787/v1/experimental-features?limit=10'
+```
+
+Start a review directly:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/reviews/start \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "threadId": "thr_123",
+    "target": {
+      "type": "uncommittedChanges"
+    },
+    "delivery": "inline"
   }'
 ```
 

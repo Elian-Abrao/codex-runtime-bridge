@@ -202,6 +202,20 @@ class CodexBridgeService:
             },
         )
 
+    async def list_experimental_features(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> JsonDict:
+        return await self._connection.request(
+            "experimentalFeature/list",
+            {
+                "cursor": cursor,
+                "limit": limit,
+            },
+        )
+
     async def list_skills(
         self,
         *,
@@ -244,6 +258,22 @@ class CodexBridgeService:
                 "sandbox": sandbox,
                 "personality": personality,
                 "ephemeral": ephemeral,
+            },
+        )
+
+    async def start_review(
+        self,
+        *,
+        thread_id: str,
+        target: JsonDict,
+        delivery: str | None = None,
+    ) -> JsonDict:
+        return await self._connection.request(
+            "review/start",
+            {
+                "threadId": thread_id,
+                "target": target,
+                "delivery": delivery,
             },
         )
 

@@ -99,3 +99,63 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
             captured["body"],
             '{"command":"/rename Demo","threadId":"thr_1"}',
         )
+
+    async def test_experimental_features_gets_expected_query(self) -> None:
+        captured: dict[str, object] = {}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured["method"] = request.method
+            captured["path"] = request.url.path
+            captured["query"] = request.url.query.decode("utf-8")
+            return httpx.Response(200, json={"data": [], "nextCursor": None})
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        result = await client.experimental_features(limit=5, cursor="cursor_1")
+
+        self.assertEqual(result, {"data": [], "nextCursor": None})
+        self.assertEqual(captured["method"], "GET")
+        self.assertEqual(captured["path"], "/v1/experimental-features")
+        self.assertEqual(captured["query"], "cursor=cursor_1&limit=5")
+
+    async def test_start_review_posts_expected_payload(self) -> None:
+        captured: dict[str, object] = {}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured["method"] = request.method
+            captured["path"] = request.url.path
+            captured["body"] = request.content.decode("utf-8")
+            return httpx.Response(
+                200,
+                json={"reviewThreadId": "thr_review", "turn": {"id": "turn_review"}},
+            )
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        result = await client.start_review(
+            thread_id="thr_1",
+            target={"type": "uncommittedChanges"},
+            delivery="inline",
+        )
+
+        self.assertEqual(result["reviewThreadId"], "thr_review")
+        self.assertEqual(captured["method"], "POST")
+        self.assertEqual(captured["path"], "/v1/reviews/start")
+        self.assertEqual(
+            captured["body"],
+            '{"threadId":"thr_1","target":{"type":"uncommittedChanges"},"delivery":"inline"}',
+        )

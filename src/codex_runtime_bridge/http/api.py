@@ -13,6 +13,7 @@ from .schemas import ChatResponse
 from .schemas import CommandExecRequest
 from .schemas import HealthResponse
 from .schemas import LoginStartResponse
+from .schemas import ReviewStartRequest
 from .schemas import SlashCommandExecuteRequest
 from .schemas import SlashCommandExecuteResponse
 from .schemas import SlashCommandListResponse
@@ -55,6 +56,13 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
     @app.get("/v1/models")
     async def models(include_hidden: bool | None = None) -> dict[str, Any]:
         return await bridge.list_models(include_hidden=include_hidden)
+
+    @app.get("/v1/experimental-features")
+    async def experimental_features(
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return await bridge.list_experimental_features(cursor=cursor, limit=limit)
 
     @app.post("/v1/threads/start")
     async def thread_start(request: ThreadStartRequest) -> dict[str, Any]:
@@ -106,6 +114,14 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             cwd=request.cwd,
             timeout_ms=request.timeout_ms,
             sandbox_policy=request.sandbox_policy,
+        )
+
+    @app.post("/v1/reviews/start")
+    async def review_start(request: ReviewStartRequest) -> dict[str, Any]:
+        return await bridge.start_review(
+            thread_id=request.thread_id,
+            target=request.target,
+            delivery=request.delivery,
         )
 
     @app.post("/v1/server-requests/respond")

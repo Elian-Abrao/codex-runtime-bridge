@@ -79,6 +79,25 @@ class FakeConnection:
                     }
                 ]
             }
+        if method == "experimentalFeature/list":
+            return {
+                "data": [
+                    {
+                        "name": "stream_review_mode",
+                        "displayName": "Stream Review Mode",
+                        "description": "Incremental review output.",
+                        "stage": "beta",
+                        "enabled": True,
+                        "defaultEnabled": False,
+                    }
+                ],
+                "nextCursor": "cursor_2",
+            }
+        if method == "review/start":
+            return {
+                "reviewThreadId": "thr_review",
+                "turn": {"id": "turn_review", "status": "inProgress"},
+            }
         if method == "account/logout":
             return {"ok": True}
         raise AssertionError(f"unexpected method {method}")
@@ -263,6 +282,46 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                     "cwds": ["/tmp/demo"],
                     "forceReload": True,
                     "perCwdExtraUserRoots": None,
+                },
+            },
+        )
+
+    async def test_execute_slash_command_experimental_lists_features(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.execute_slash_command("/experimental --limit 5")
+
+        self.assertEqual(result["command"], "experimental")
+        self.assertIn("stream_review_mode", result["message"])
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "experimentalFeature/list",
+                "params": {"cursor": None, "limit": 5},
+            },
+        )
+
+    async def test_execute_slash_command_review_starts_detached_review(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.execute_slash_command(
+            "/review --detached branch main",
+            thread_id="thr_7",
+        )
+
+        self.assertEqual(result["command"], "review")
+        self.assertEqual(result["threadId"], "thr_review")
+        self.assertIn("detached review", result["message"])
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "review/start",
+                "params": {
+                    "threadId": "thr_7",
+                    "target": {"type": "baseBranch", "branch": "main"},
+                    "delivery": "detached",
                 },
             },
         )

@@ -38,6 +38,21 @@ class BridgeHttpClient:
         response.raise_for_status()
         return response.json()
 
+    async def experimental_features(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        response = await self._client.get("/v1/experimental-features", params=params or None)
+        response.raise_for_status()
+        return response.json()
+
     async def start_thread(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         response = await self._client.post("/v1/threads/start", json=payload or {})
         response.raise_for_status()
@@ -71,6 +86,24 @@ class BridgeHttpClient:
                 "requestId": request_id,
                 "result": result,
                 "error": error,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def start_review(
+        self,
+        *,
+        thread_id: str,
+        target: dict[str, Any],
+        delivery: str | None = None,
+    ) -> dict[str, Any]:
+        response = await self._client.post(
+            "/v1/reviews/start",
+            json={
+                "threadId": thread_id,
+                "target": target,
+                "delivery": delivery,
             },
         )
         response.raise_for_status()

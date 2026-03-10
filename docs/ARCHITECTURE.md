@@ -61,9 +61,11 @@ Codex runtime on the machine
     - `account/read`
     - `account/login/start`
     - `model/list`
+    - `experimentalFeature/list`
     - `thread/start`
     - `turn/start`
     - `command/exec`
+    - `review/start`
 
 - `bridge/commands/`
   - owns bridge-level slash command parsing and handler dispatch

@@ -119,7 +119,7 @@ async def _interactive_chat(
     service = service or CodexBridgeService()
     thread_id = args.thread_id
     print("Interactive chat")
-    print("Commands: /help /new /rename /skills /logout /exit")
+    print("Commands: /help /new /rename /skills /experimental /review /logout /exit")
     try:
         while True:
             prompt = input("bridge> ").strip()
