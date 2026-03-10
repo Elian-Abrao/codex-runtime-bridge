@@ -58,6 +58,24 @@ class BridgeHttpClient:
                     continue
                 yield json.loads(line[6:])
 
+    async def respond_server_request(
+        self,
+        request_id: str | int,
+        *,
+        result: Any = None,
+        error: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        response = await self._client.post(
+            "/v1/server-requests/respond",
+            json={
+                "requestId": request_id,
+                "result": result,
+                "error": error,
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def exec(self, command: list[str], **kwargs: Any) -> dict[str, Any]:
         payload = {"command": command, **kwargs}
         response = await self._client.post("/v1/command/exec", json=payload)

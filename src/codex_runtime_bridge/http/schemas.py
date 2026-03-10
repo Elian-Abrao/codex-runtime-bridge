@@ -63,3 +63,11 @@ class LoginStartResponse(BaseModel):
     auth_url: str | None = Field(default=None, alias="authUrl")
 
     model_config = {"populate_by_name": True}
+
+
+class ServerRequestResolveRequest(BaseModel):
+    request_id: str | int = Field(alias="requestId")
+    result: Any = None
+    error: dict[str, Any] | None = None
+
+    model_config = {"populate_by_name": True}

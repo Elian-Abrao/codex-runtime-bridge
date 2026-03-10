@@ -13,6 +13,7 @@ from .schemas import ChatResponse
 from .schemas import CommandExecRequest
 from .schemas import HealthResponse
 from .schemas import LoginStartResponse
+from .schemas import ServerRequestResolveRequest
 from .schemas import ThreadStartRequest
 
 
@@ -80,7 +81,7 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
     @app.post("/v1/chat/stream")
     async def chat_stream(request: ChatRequest) -> StreamingResponse:
         async def body() -> AsyncIterator[bytes]:
-            async for event in bridge.stream_turn(
+            async for event in bridge.stream_turn_events(
                 prompt=request.prompt,
                 thread_id=request.thread_id,
                 cwd=request.cwd,
@@ -91,7 +92,7 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
                 summary=request.summary,
                 personality=request.personality,
             ):
-                yield _sse(event)
+                yield _sse(event.to_dict())
 
         return StreamingResponse(body(), media_type="text/event-stream")
 
@@ -102,6 +103,14 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             cwd=request.cwd,
             timeout_ms=request.timeout_ms,
             sandbox_policy=request.sandbox_policy,
+        )
+
+    @app.post("/v1/server-requests/respond")
+    async def server_request_respond(request: ServerRequestResolveRequest) -> dict[str, Any]:
+        return await bridge.respond_server_request(
+            request.request_id,
+            result=request.result,
+            error=request.error,
         )
 
     return app

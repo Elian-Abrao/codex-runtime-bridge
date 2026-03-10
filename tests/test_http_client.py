@@ -37,3 +37,34 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
                 {"type": "turn/completed", "payload": {"turn": {"id": "turn_1"}}},
             ],
         )
+
+    async def test_respond_server_request_posts_expected_payload(self) -> None:
+        captured: dict[str, object] = {}
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured["method"] = request.method
+            captured["path"] = request.url.path
+            captured["body"] = request.content.decode("utf-8")
+            return httpx.Response(
+                200,
+                json={"ok": True, "requestId": "req_1"},
+            )
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        result = await client.respond_server_request("req_1", result={"decision": "decline"})
+
+        self.assertEqual(result, {"ok": True, "requestId": "req_1"})
+        self.assertEqual(captured["method"], "POST")
+        self.assertEqual(captured["path"], "/v1/server-requests/respond")
+        self.assertEqual(
+            captured["body"],
+            '{"requestId":"req_1","result":{"decision":"decline"},"error":null}',
+        )

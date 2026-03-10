@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..bridge import BridgeEvent
+
 
 class ChatStreamPrinter:
     def __init__(self) -> None:
@@ -54,9 +56,41 @@ class ChatStreamPrinter:
             self._reset_line()
             self._write("[file-change]\n")
 
-    def render(self, event: dict[str, Any]) -> None:
-        event_type = event["type"]
-        payload = event.get("payload", {})
+    def _coerce_event(self, event: BridgeEvent | dict[str, Any]) -> tuple[str, dict[str, Any], str | int | None]:
+        if isinstance(event, BridgeEvent):
+            return event.type, event.payload, event.request_id if event.request_id is not None else None
+        return event["type"], event.get("payload", {}), event.get("requestId")
+
+    def _render_server_request(self, event_type: str, payload: dict[str, Any], request_id: str | int | None) -> None:
+        self._reset_line()
+        if event_type == "item/commandExecution/requestApproval":
+            command = payload.get("command") or "<unknown command>"
+            self._write(f"[approval] {command} (request {request_id})\n")
+            return
+        if event_type == "item/fileChange/requestApproval":
+            self._write(f"[approval] file changes requested (request {request_id})\n")
+            return
+        if event_type == "item/tool/requestUserInput":
+            self._write(f"[input] tool requested user input (request {request_id})\n")
+            return
+        if event_type == "item/tool/call":
+            tool = payload.get("tool") or "<unknown tool>"
+            self._write(f"[tool-call] {tool} (request {request_id})\n")
+            return
+        if event_type == "mcpServer/elicitation/request":
+            self._write(f"[mcp] elicitation requested (request {request_id})\n")
+            return
+        if event_type == "account/chatgptAuthTokens/refresh":
+            self._write(f"[auth] ChatGPT token refresh requested (request {request_id})\n")
+            return
+        self._write(f"[server-request] {event_type} (request {request_id})\n")
+
+    def render(self, event: BridgeEvent | dict[str, Any]) -> None:
+        event_type, payload, request_id = self._coerce_event(event)
+        if request_id is not None:
+            self._render_server_request(event_type, payload, request_id)
+            return
+
         if event_type == "item/started":
             item = payload.get("item", {})
             if isinstance(item, dict):

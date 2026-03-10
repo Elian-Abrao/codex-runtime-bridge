@@ -4,6 +4,7 @@ import contextlib
 import io
 import unittest
 
+from codex_runtime_bridge.bridge import BridgeEvent
 from codex_runtime_bridge.cli import _ChatStreamPrinter
 
 
@@ -78,3 +79,21 @@ class ChatStreamPrinterTests(unittest.TestCase):
             output.getvalue(),
             "[commentary] Checking files\n[exec] ls\nREADME.md\n[assistant] Done\n",
         )
+
+    def test_printer_renders_server_requests(self) -> None:
+        printer = _ChatStreamPrinter()
+        output = io.StringIO()
+        event = BridgeEvent(
+            kind="server_request",
+            type="item/commandExecution/requestApproval",
+            payload={"command": "git push"},
+            thread_id="thr_1",
+            turn_id="turn_1",
+            request_id="req_7",
+        )
+
+        with contextlib.redirect_stdout(output):
+            printer.render(event)
+            printer.finish()
+
+        self.assertEqual(output.getvalue(), "[approval] git push (request req_7)\n")

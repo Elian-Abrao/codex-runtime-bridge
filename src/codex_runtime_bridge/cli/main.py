@@ -73,22 +73,22 @@ async def _run_chat_stream(service: CodexBridgeService, **kwargs: Any) -> dict[s
     final_turn: dict[str, Any] = {}
     assistant_fragments: list[str] = []
     agent_message_phases: dict[str, str | None] = {}
-    async for event in service.stream_turn(**kwargs):
+    async for event in service.stream_turn_events(**kwargs):
         printer.render(event)
-        current_thread_id = event.get("threadId", current_thread_id)
-        if event["type"] in {"turn.started", "turn/started"}:
-            current_turn_id = event.get("turnId") or event.get("payload", {}).get("turn", {}).get("id")
-        elif event["type"] == "item/started":
-            item = event["payload"].get("item", {})
+        current_thread_id = event.thread_id or current_thread_id
+        if event.type in {"turn.started", "turn/started"}:
+            current_turn_id = event.turn_id or current_turn_id
+        elif event.type == "item/started":
+            item = event.item or {}
             if item.get("type") == "agentMessage":
                 agent_message_phases[item["id"]] = item.get("phase")
-        elif event["type"] == "item/agentMessage/delta":
-            item_id = event["payload"].get("itemId")
+        elif event.type == "item/agentMessage/delta":
+            item_id = event.item_id
             phase = agent_message_phases.get(item_id)
             if phase in (None, "final_answer"):
-                assistant_fragments.append(event["payload"]["delta"])
-        elif event["type"] == "turn/completed":
-            final_turn = event["payload"].get("turn", {})
+                assistant_fragments.append(event.payload["delta"])
+        elif event.type == "turn/completed":
+            final_turn = event.turn or {}
     printer.finish()
     return {
         "threadId": current_thread_id,

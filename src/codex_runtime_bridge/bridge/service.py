@@ -6,6 +6,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from .events import BridgeEvent
+from .translator import translate_upstream_message
 from ..transport import AppServerConnection
 from ..transport import AppServerOptions
 from ..transport import JsonDict
@@ -91,6 +93,96 @@ class CodexBridgeService:
     async def logout(self) -> JsonDict:
         return await self._connection.request("account/logout", {})
 
+    async def respond_server_request(
+        self,
+        request_id: str | int,
+        *,
+        result: Any | None = None,
+        error: JsonDict | None = None,
+    ) -> dict[str, Any]:
+        await self._connection.respond(request_id, result=result, error=error)
+        return {
+            "ok": True,
+            "requestId": request_id,
+        }
+
+    async def resolve_command_execution_approval(
+        self,
+        request_id: str | int,
+        decision: str | JsonDict,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={"decision": decision},
+        )
+
+    async def resolve_file_change_approval(
+        self,
+        request_id: str | int,
+        decision: str,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={"decision": decision},
+        )
+
+    async def submit_tool_input(
+        self,
+        request_id: str | int,
+        answers: JsonDict,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={"answers": answers},
+        )
+
+    async def submit_dynamic_tool_result(
+        self,
+        request_id: str | int,
+        *,
+        content_items: list[JsonDict],
+        success: bool,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={
+                "contentItems": content_items,
+                "success": success,
+            },
+        )
+
+    async def submit_mcp_elicitation(
+        self,
+        request_id: str | int,
+        *,
+        action: str,
+        content: Any | None = None,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={
+                "action": action,
+                "content": content,
+            },
+        )
+
+    async def submit_chatgpt_auth_refresh(
+        self,
+        request_id: str | int,
+        *,
+        access_token: str,
+        chatgpt_account_id: str,
+        chatgpt_plan_type: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.respond_server_request(
+            request_id,
+            result={
+                "accessToken": access_token,
+                "chatgptAccountId": chatgpt_account_id,
+                "chatgptPlanType": chatgpt_plan_type,
+            },
+        )
+
     async def list_models(
         self,
         *,
@@ -147,7 +239,7 @@ class CodexBridgeService:
             },
         )
 
-    async def stream_turn(
+    async def stream_turn_events(
         self,
         *,
         prompt: str,
@@ -159,7 +251,7 @@ class CodexBridgeService:
         effort: str | None = None,
         summary: str | None = None,
         personality: str | None = None,
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncIterator[BridgeEvent]:
         if not thread_id:
             thread_result = await self.start_thread(
                 cwd=cwd,
@@ -170,11 +262,7 @@ class CodexBridgeService:
             )
             thread = thread_result["thread"]
             thread_id = thread["id"]
-            yield {
-                "type": "thread.started",
-                "threadId": thread_id,
-                "thread": thread,
-            }
+            yield BridgeEvent.thread_started(thread_id, thread)
 
         queue = self._connection.subscribe()
         try:
@@ -193,36 +281,52 @@ class CodexBridgeService:
             )
             turn = turn_result["turn"]
             turn_id = turn["id"]
-            yield {
-                "type": "turn.started",
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "turn": turn,
-            }
+            yield BridgeEvent.turn_started(thread_id, turn_id, turn)
 
             while True:
                 message = await queue.get()
-                method = message.get("method")
-                params = message.get("params", {})
-                if params.get("threadId") != thread_id:
+                event = translate_upstream_message(message)
+                if event is None:
                     continue
-
-                current_turn_id = params.get("turnId") or params.get("turn", {}).get("id")
-                if current_turn_id != turn_id:
+                if event.kind == "server_request" and event.thread_id is None and event.turn_id is None:
+                    yield event
                     continue
-
-                event = {
-                    "type": method,
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "payload": params,
-                }
+                if event.thread_id != thread_id:
+                    continue
+                if event.turn_id is not None and event.turn_id != turn_id:
+                    continue
                 yield event
 
-                if method == "turn/completed":
+                if event.type == "turn/completed":
                     break
         finally:
             self._connection.unsubscribe(queue)
+
+    async def stream_turn(
+        self,
+        *,
+        prompt: str,
+        thread_id: str | None = None,
+        cwd: str | Path | None = None,
+        model: str | None = None,
+        approval_policy: str | None = None,
+        sandbox: str | None = None,
+        effort: str | None = None,
+        summary: str | None = None,
+        personality: str | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        async for event in self.stream_turn_events(
+            prompt=prompt,
+            thread_id=thread_id,
+            cwd=cwd,
+            model=model,
+            approval_policy=approval_policy,
+            sandbox=sandbox,
+            effort=effort,
+            summary=summary,
+            personality=personality,
+        ):
+            yield event.to_dict()
 
     async def chat(
         self,
@@ -244,7 +348,7 @@ class CodexBridgeService:
         current_turn_id: str | None = None
         agent_message_phases: dict[str, str | None] = {}
 
-        async for event in self.stream_turn(
+        async for event in self.stream_turn_events(
             prompt=prompt,
             thread_id=thread_id,
             cwd=cwd,
@@ -255,21 +359,23 @@ class CodexBridgeService:
             summary=summary,
             personality=personality,
         ):
-            events.append(event)
-            current_thread_id = event.get("threadId", current_thread_id)
-            if event["type"] == "turn.started":
-                current_turn_id = event["turnId"]
-            elif event["type"] == "item/started":
-                item = event["payload"].get("item", {})
+            events.append(event.to_dict())
+            current_thread_id = event.thread_id or current_thread_id
+            if event.type == "turn.started":
+                current_turn_id = event.turn_id
+            elif event.type == "turn/started":
+                current_turn_id = event.turn_id or current_turn_id
+            elif event.type == "item/started":
+                item = event.item or {}
                 if item.get("type") == "agentMessage":
                     agent_message_phases[item["id"]] = item.get("phase")
-            elif event["type"] == "item/agentMessage/delta":
-                item_id = event["payload"].get("itemId")
+            elif event.type == "item/agentMessage/delta":
+                item_id = event.item_id
                 phase = agent_message_phases.get(item_id)
                 if phase in (None, "final_answer"):
-                    assistant_fragments.append(event["payload"]["delta"])
-            elif event["type"] == "turn/completed":
-                final_turn = event["payload"]["turn"]
+                    assistant_fragments.append(event.payload["delta"])
+            elif event.type == "turn/completed":
+                final_turn = event.turn
 
         return {
             "threadId": current_thread_id,

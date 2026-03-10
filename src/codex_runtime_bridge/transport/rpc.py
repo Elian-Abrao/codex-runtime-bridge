@@ -155,6 +155,21 @@ class AppServerConnection:
             message["params"] = params
         await self._send_message(message)
 
+    async def respond(
+        self,
+        request_id: str | int,
+        *,
+        result: Any | None = None,
+        error: JsonDict | None = None,
+    ) -> None:
+        await self.start()
+        message: JsonDict = {"id": request_id}
+        if error is not None:
+            message["error"] = error
+        else:
+            message["result"] = result if result is not None else {}
+        await self._send_message(message)
+
     async def close(self) -> None:
         for future in self._pending.values():
             if not future.done():
