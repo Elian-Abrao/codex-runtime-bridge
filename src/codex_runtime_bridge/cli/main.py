@@ -66,6 +66,18 @@ def _print(data: Any, *, as_json: bool = False) -> None:
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def _print_slash_command_result(result: dict[str, Any]) -> None:
+    message = result.get("message")
+    if message:
+        print(message)
+        if result.get("command") == "help":
+            print("Local commands:")
+            print("/exit  Exit interactive chat.")
+        return
+    if result.get("data") is not None:
+        _print(result["data"])
+
+
 async def _run_chat_stream(service: CodexBridgeService, **kwargs: Any) -> dict[str, Any]:
     printer = ChatStreamPrinter()
     current_thread_id = kwargs.get("thread_id")
@@ -98,11 +110,16 @@ async def _run_chat_stream(service: CodexBridgeService, **kwargs: Any) -> dict[s
     }
 
 
-async def _interactive_chat(args: argparse.Namespace) -> int:
-    service = CodexBridgeService()
+async def _interactive_chat(
+    args: argparse.Namespace,
+    *,
+    service: CodexBridgeService | None = None,
+) -> int:
+    own_service = service is None
+    service = service or CodexBridgeService()
     thread_id = args.thread_id
     print("Interactive chat")
-    print("Commands: /help /reset /logout /exit")
+    print("Commands: /help /new /rename /skills /logout /exit")
     try:
         while True:
             prompt = input("bridge> ").strip()
@@ -110,17 +127,25 @@ async def _interactive_chat(args: argparse.Namespace) -> int:
                 continue
             if prompt == "/exit":
                 return 0
-            if prompt == "/help":
-                print("Commands: /help /reset /logout /exit")
+            if prompt.startswith("/"):
+                try:
+                    result = await service.execute_slash_command(
+                        prompt,
+                        thread_id=thread_id,
+                        cwd=args.cwd,
+                        model=args.model,
+                        approval_policy=args.approval_policy,
+                        sandbox=args.sandbox,
+                        personality=args.personality,
+                    )
+                except ValueError as exc:
+                    print(f"Error: {exc}")
+                    continue
+                _print_slash_command_result(result)
+                thread_id = result.get("threadId") or thread_id
+                if result.get("command") == "logout":
+                    return 0
                 continue
-            if prompt == "/reset":
-                thread_id = None
-                print("Thread reset.")
-                continue
-            if prompt == "/logout":
-                await service.logout()
-                print("Logged out.")
-                return 0
 
             result = await _run_chat_stream(
                 service,
@@ -136,7 +161,8 @@ async def _interactive_chat(args: argparse.Namespace) -> int:
             )
             thread_id = result["threadId"]
     finally:
-        await service.close()
+        if own_service:
+            await service.close()
 
 
 async def run_async(args: argparse.Namespace) -> int:

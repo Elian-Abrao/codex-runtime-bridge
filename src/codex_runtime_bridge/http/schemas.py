@@ -71,3 +71,36 @@ class ServerRequestResolveRequest(BaseModel):
     error: dict[str, Any] | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class SlashCommandDefinition(BaseModel):
+    name: str
+    usage: str
+    summary: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class SlashCommandListResponse(BaseModel):
+    commands: list[SlashCommandDefinition]
+
+
+class SlashCommandExecuteRequest(BaseModel):
+    command: str
+    thread_id: str | None = Field(default=None, alias="threadId")
+    cwd: str | None = None
+    model: str | None = None
+    approval_policy: str | None = Field(default=None, alias="approvalPolicy")
+    sandbox: str | None = None
+    personality: str | None = None
+    ephemeral: bool | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class SlashCommandExecuteResponse(BaseModel):
+    command: str
+    message: str
+    data: Any = None
+    thread_id: str | None = Field(default=None, alias="threadId")
+
+    model_config = {"populate_by_name": True}

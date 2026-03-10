@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import unittest
+from unittest import mock
 
 from codex_runtime_bridge.bridge import BridgeEvent
 from codex_runtime_bridge.cli import _ChatStreamPrinter
+from codex_runtime_bridge.cli.main import _interactive_chat
 
 
 class ChatStreamPrinterTests(unittest.TestCase):
@@ -97,3 +100,62 @@ class ChatStreamPrinterTests(unittest.TestCase):
             printer.finish()
 
         self.assertEqual(output.getvalue(), "[approval] git push (request req_7)\n")
+
+
+class InteractiveChatTests(unittest.IsolatedAsyncioTestCase):
+    async def test_interactive_chat_routes_slash_commands_through_service(self) -> None:
+        output = io.StringIO()
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            async def execute_slash_command(self, command: str, **kwargs: object) -> dict[str, object]:
+                self.calls.append({"command": command, "kwargs": kwargs})
+                return {
+                    "command": "new",
+                    "message": "Started new thread thr_new.",
+                    "data": {"thread": {"id": "thr_new"}},
+                    "threadId": "thr_new",
+                }
+
+            async def close(self) -> None:
+                return None
+
+        fake_service = FakeService()
+        args = argparse.Namespace(
+            thread_id=None,
+            cwd="/tmp/demo",
+            model=None,
+            approval_policy=None,
+            sandbox=None,
+            effort=None,
+            summary=None,
+            personality=None,
+        )
+        user_input = iter(["/new", "/exit"])
+
+        with (
+            contextlib.redirect_stdout(output),
+            mock.patch("builtins.input", side_effect=lambda _: next(user_input)),
+        ):
+            result = await _interactive_chat(args, service=fake_service)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            fake_service.calls,
+            [
+                {
+                    "command": "/new",
+                    "kwargs": {
+                        "thread_id": None,
+                        "cwd": "/tmp/demo",
+                        "model": None,
+                        "approval_policy": None,
+                        "sandbox": None,
+                        "personality": None,
+                    },
+                }
+            ],
+        )
+        self.assertIn("Started new thread thr_new.", output.getvalue())

@@ -88,6 +88,7 @@ The repository already has a functional first vertical slice:
 - start threads
 - run turns and stream real turn events
 - surface upstream server requests such as approvals and tool input prompts
+- expose a first bridge-level slash command layer for interactive use
 - execute `command/exec`
 - expose the same capabilities through:
   - CLI
@@ -160,6 +161,16 @@ Run an interactive chat loop:
 
 ```bash
 codex-runtime-bridge chat --interactive
+```
+
+Inside interactive chat, the bridge currently supports:
+
+```text
+/help
+/new
+/rename <name>
+/skills [--reload]
+/logout
 ```
 
 Execute one command through Codex's `command/exec`:
@@ -247,6 +258,22 @@ curl -X POST http://127.0.0.1:8787/v1/server-requests/respond \
   }'
 ```
 
+List the currently supported bridge slash commands:
+
+```bash
+curl http://127.0.0.1:8787/v1/slash-commands
+```
+
+Execute a slash command through the bridge:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/slash-commands/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "command": "/skills"
+  }'
+```
+
 Exec:
 
 ```bash
@@ -310,6 +337,8 @@ The current implementation is intentionally thin:
   - stdio JSON-RPC client for `codex app-server`
 - [`bridge/service.py`](./src/codex_runtime_bridge/bridge/service.py)
   - bridge methods on top of the official runtime
+- [`bridge/commands/`](./src/codex_runtime_bridge/bridge/commands)
+  - slash command parsing, registry, and handlers on top of upstream RPC methods
 - [`bridge/events.py`](./src/codex_runtime_bridge/bridge/events.py)
   - stable internal event model for streamed bridge activity
 - [`bridge/translator.py`](./src/codex_runtime_bridge/bridge/translator.py)

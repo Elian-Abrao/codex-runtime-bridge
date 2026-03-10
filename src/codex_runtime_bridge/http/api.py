@@ -4,7 +4,7 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..bridge import CodexBridgeService
@@ -13,6 +13,9 @@ from .schemas import ChatResponse
 from .schemas import CommandExecRequest
 from .schemas import HealthResponse
 from .schemas import LoginStartResponse
+from .schemas import SlashCommandExecuteRequest
+from .schemas import SlashCommandExecuteResponse
+from .schemas import SlashCommandListResponse
 from .schemas import ServerRequestResolveRequest
 from .schemas import ThreadStartRequest
 
@@ -112,5 +115,25 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             result=request.result,
             error=request.error,
         )
+
+    @app.get("/v1/slash-commands", response_model=SlashCommandListResponse)
+    async def slash_commands() -> dict[str, Any]:
+        return {"commands": bridge.available_slash_commands()}
+
+    @app.post("/v1/slash-commands/execute", response_model=SlashCommandExecuteResponse)
+    async def slash_command_execute(request: SlashCommandExecuteRequest) -> dict[str, Any]:
+        try:
+            return await bridge.execute_slash_command(
+                request.command,
+                thread_id=request.thread_id,
+                cwd=request.cwd,
+                model=request.model,
+                approval_policy=request.approval_policy,
+                sandbox=request.sandbox,
+                personality=request.personality,
+                ephemeral=request.ephemeral,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return app

@@ -6,6 +6,9 @@ import webbrowser
 from pathlib import Path
 from typing import Any, AsyncIterator
 
+from .commands import SlashCommandContext
+from .commands import available_slash_commands as list_slash_commands
+from .commands import execute_slash_command as run_slash_command
 from .events import BridgeEvent
 from .translator import translate_upstream_message
 from ..transport import AppServerConnection
@@ -199,6 +202,29 @@ class CodexBridgeService:
             },
         )
 
+    async def list_skills(
+        self,
+        *,
+        cwds: list[str | Path] | None = None,
+        force_reload: bool = False,
+        per_cwd_extra_user_roots: list[JsonDict] | None = None,
+    ) -> JsonDict:
+        normalized_cwds: list[str] = []
+        if cwds is not None:
+            for cwd in cwds:
+                normalized = normalize_cwd(cwd)
+                if normalized is not None:
+                    normalized_cwds.append(normalized)
+
+        return await self._connection.request(
+            "skills/list",
+            {
+                "cwds": normalized_cwds,
+                "forceReload": force_reload,
+                "perCwdExtraUserRoots": per_cwd_extra_user_roots,
+            },
+        )
+
     async def start_thread(
         self,
         *,
@@ -220,6 +246,45 @@ class CodexBridgeService:
                 "ephemeral": ephemeral,
             },
         )
+
+    async def set_thread_name(self, thread_id: str, name: str) -> JsonDict:
+        return await self._connection.request(
+            "thread/name/set",
+            {
+                "threadId": thread_id,
+                "name": name,
+            },
+        )
+
+    def available_slash_commands(self) -> list[dict[str, Any]]:
+        return [spec.to_dict() for spec in list_slash_commands()]
+
+    async def execute_slash_command(
+        self,
+        command: str,
+        *,
+        thread_id: str | None = None,
+        cwd: str | Path | None = None,
+        model: str | None = None,
+        approval_policy: str | None = None,
+        sandbox: str | None = None,
+        personality: str | None = None,
+        ephemeral: bool | None = None,
+    ) -> dict[str, Any]:
+        result = await run_slash_command(
+            self,
+            command,
+            SlashCommandContext(
+                thread_id=thread_id,
+                cwd=cwd,
+                model=model,
+                approval_policy=approval_policy,
+                sandbox=sandbox,
+                personality=personality,
+                ephemeral=ephemeral,
+            ),
+        )
+        return result.to_dict()
 
     async def exec_command(
         self,

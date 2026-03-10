@@ -76,6 +76,19 @@ class BridgeHttpClient:
         response.raise_for_status()
         return response.json()
 
+    async def slash_commands(self) -> dict[str, Any]:
+        response = await self._client.get("/v1/slash-commands")
+        response.raise_for_status()
+        return response.json()
+
+    async def execute_slash_command(self, command: str, **kwargs: Any) -> dict[str, Any]:
+        response = await self._client.post(
+            "/v1/slash-commands/execute",
+            json={"command": command, **kwargs},
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def exec(self, command: list[str], **kwargs: Any) -> dict[str, Any]:
         payload = {"command": command, **kwargs}
         response = await self._client.post("/v1/command/exec", json=payload)

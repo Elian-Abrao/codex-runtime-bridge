@@ -69,6 +69,7 @@ src/codex_runtime_bridge/
   transport/
     rpc.py
   bridge/
+    commands/
     events.py
     service.py
     translator.py

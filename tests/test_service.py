@@ -12,6 +12,8 @@ class FakeConnection:
         self.initialized = True
         self.codex_command = "codex"
         self._subscriptions: set[asyncio.Queue[dict]] = set()
+        self.request_calls: list[dict] = []
+        self.thread_start_calls = 0
         self.turn_start_calls = 0
         self.last_turn_start_params: dict | None = None
         self.respond_calls: list[dict] = []
@@ -28,8 +30,10 @@ class FakeConnection:
         self._subscriptions.discard(queue)
 
     async def request(self, method: str, params: dict | None = None) -> dict:
+        self.request_calls.append({"method": method, "params": params})
         if method == "thread/start":
-            return {"thread": {"id": "thr_1"}}
+            self.thread_start_calls += 1
+            return {"thread": {"id": f"thr_{self.thread_start_calls}"}}
         if method == "turn/start":
             self.turn_start_calls += 1
             self.last_turn_start_params = params or {}
@@ -53,6 +57,30 @@ class FakeConnection:
                 if prompt != "needs approval":
                     queue.put_nowait(self._done())
             return {"turn": {"id": "turn_1", "status": "inProgress"}}
+        if method == "thread/name/set":
+            return {}
+        if method == "skills/list":
+            cwd = ((params or {}).get("cwds") or ["/workspace"])[0]
+            return {
+                "data": [
+                    {
+                        "cwd": cwd,
+                        "errors": [],
+                        "skills": [
+                            {
+                                "name": "playwright",
+                                "scope": "system",
+                                "description": "Browser automation",
+                                "shortDescription": "Browser automation",
+                                "path": "/skills/playwright",
+                                "enabled": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        if method == "account/logout":
+            return {"ok": True}
         raise AssertionError(f"unexpected method {method}")
 
     async def respond(self, request_id: str | int, *, result: object = None, error: dict | None = None) -> None:
@@ -169,4 +197,72 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                     "error": None,
                 }
             ],
+        )
+
+    async def test_execute_slash_command_help_returns_registered_commands(self) -> None:
+        service = CodexBridgeService(connection=FakeConnection())
+
+        result = await service.execute_slash_command("/help")
+
+        self.assertEqual(result["command"], "help")
+        self.assertIn("/new", result["message"])
+        self.assertIn("skills", [item["name"] for item in result["data"]["commands"]])
+
+    async def test_execute_slash_command_new_starts_thread(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.execute_slash_command("/new", cwd="/tmp/demo")
+
+        self.assertEqual(result["command"], "new")
+        self.assertEqual(result["threadId"], "thr_1")
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "thread/start",
+                "params": {
+                    "cwd": "/tmp/demo",
+                    "model": None,
+                    "approvalPolicy": None,
+                    "sandbox": None,
+                    "personality": None,
+                    "ephemeral": None,
+                },
+            },
+        )
+
+    async def test_execute_slash_command_rename_sets_thread_name(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.execute_slash_command("/rename Demo Thread", thread_id="thr_7")
+
+        self.assertEqual(result["command"], "rename")
+        self.assertEqual(result["threadId"], "thr_7")
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "thread/name/set",
+                "params": {"threadId": "thr_7", "name": "Demo Thread"},
+            },
+        )
+
+    async def test_execute_slash_command_skills_uses_current_cwd(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.execute_slash_command("/skills --reload", cwd="/tmp/demo")
+
+        self.assertEqual(result["command"], "skills")
+        self.assertIn("playwright", result["message"])
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "skills/list",
+                "params": {
+                    "cwds": ["/tmp/demo"],
+                    "forceReload": True,
+                    "perCwdExtraUserRoots": None,
+                },
+            },
         )

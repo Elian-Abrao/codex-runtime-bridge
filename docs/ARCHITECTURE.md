@@ -65,6 +65,10 @@ Codex runtime on the machine
     - `turn/start`
     - `command/exec`
 
+- `bridge/commands/`
+  - owns bridge-level slash command parsing and handler dispatch
+  - composes upstream RPC methods where the official CLI command is client UX rather than a single app-server method
+
 - `bridge/events.py`
   - stable internal event model for streamed bridge activity
 
