@@ -39,8 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument("--approval-policy")
     chat_parser.add_argument("--sandbox")
     chat_parser.add_argument("--effort")
+    chat_parser.add_argument("--summary", choices=["auto", "concise", "detailed", "none"])
     chat_parser.add_argument("--personality")
-    chat_parser.add_argument("--stream", action="store_true")
+    chat_parser.add_argument("--stream", action="store_true", help="Force incremental terminal output.")
+    chat_parser.add_argument("--no-stream", action="store_true", help="Wait for completion before printing.")
 
     exec_parser = subparsers.add_parser("exec", parents=[json_parent])
     exec_parser.add_argument("--cwd")
@@ -63,15 +65,143 @@ def _print(data: Any, *, as_json: bool = False) -> None:
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+class _ChatStreamPrinter:
+    def __init__(self) -> None:
+        self._active_stream: tuple[str, str] | None = None
+        self._line_open = False
+        self._agent_phases: dict[str, str | None] = {}
+        self._streamed_command_output: set[str] = set()
+
+    def _write(self, text: str) -> None:
+        if not text:
+            return
+        print(text, end="", flush=True)
+        self._line_open = not text.endswith("\n")
+
+    def _reset_line(self) -> None:
+        if self._line_open:
+            print()
+        self._line_open = False
+        self._active_stream = None
+
+    def _begin_stream(self, key: tuple[str, str], prefix: str = "") -> None:
+        if self._active_stream == key:
+            return
+        self._reset_line()
+        if prefix:
+            self._write(prefix)
+        self._active_stream = key
+
+    def _format_item_started(self, item: dict[str, Any]) -> None:
+        item_type = item.get("type")
+        item_id = item.get("id")
+        if item_type == "agentMessage" and item_id:
+            self._agent_phases[item_id] = item.get("phase")
+            return
+        if item_type == "commandExecution":
+            self._reset_line()
+            self._write(f"[exec] {item.get('command', '')}\n")
+            return
+        if item_type == "mcpToolCall":
+            self._reset_line()
+            server = item.get("server", "?")
+            tool = item.get("tool", "?")
+            self._write(f"[tool] {server}/{tool}\n")
+            return
+        if item_type == "dynamicToolCall":
+            self._reset_line()
+            self._write(f"[tool] {item.get('tool', '?')}\n")
+            return
+        if item_type == "fileChange":
+            self._reset_line()
+            self._write("[file-change]\n")
+
+    def render(self, event: dict[str, Any]) -> None:
+        event_type = event["type"]
+        payload = event.get("payload", {})
+        if event_type == "item/started":
+            item = payload.get("item", {})
+            if isinstance(item, dict):
+                self._format_item_started(item)
+            return
+
+        if event_type == "item/agentMessage/delta":
+            item_id = payload.get("itemId", "")
+            phase = self._agent_phases.get(item_id)
+            label = "[commentary] " if phase == "commentary" else "[assistant] "
+            self._begin_stream(("agent", item_id), prefix=label)
+            self._write(payload.get("delta", ""))
+            return
+
+        if event_type in {"item/reasoning/summaryTextDelta", "item/reasoning/textDelta"}:
+            item_id = payload.get("itemId", "")
+            self._begin_stream(("reasoning", item_id), prefix="[reasoning] ")
+            self._write(payload.get("delta", ""))
+            return
+
+        if event_type == "item/plan/delta":
+            item_id = payload.get("itemId", "")
+            self._begin_stream(("plan", item_id), prefix="[plan] ")
+            self._write(payload.get("delta", ""))
+            return
+
+        if event_type == "item/commandExecution/outputDelta":
+            item_id = payload.get("itemId", "")
+            self._streamed_command_output.add(item_id)
+            self._begin_stream(("command", item_id))
+            self._write(payload.get("delta", ""))
+            return
+
+        if event_type == "item/completed":
+            item = payload.get("item", {})
+            if not isinstance(item, dict):
+                return
+            if item.get("type") == "commandExecution":
+                item_id = item.get("id", "")
+                aggregated_output = item.get("aggregatedOutput") or ""
+                if item_id not in self._streamed_command_output and aggregated_output:
+                    self._begin_stream(("command", item_id))
+                    self._write(aggregated_output)
+                self._reset_line()
+            return
+
+        if event_type == "turn/completed":
+            self._reset_line()
+
+    def finish(self) -> None:
+        self._reset_line()
+
+
 async def _run_chat_stream(service: CodexBridgeService, **kwargs: Any) -> dict[str, Any]:
-    final: dict[str, Any] | None = None
+    printer = _ChatStreamPrinter()
+    current_thread_id = kwargs.get("thread_id")
+    current_turn_id: str | None = None
+    final_turn: dict[str, Any] = {}
+    assistant_fragments: list[str] = []
+    agent_message_phases: dict[str, str | None] = {}
     async for event in service.stream_turn(**kwargs):
-        if event["type"] == "item/agentMessage/delta":
-            print(event["payload"]["delta"], end="", flush=True)
-        elif event["type"] == "turn.completed":
-            final = event
-    print()
-    return final or {}
+        printer.render(event)
+        current_thread_id = event.get("threadId", current_thread_id)
+        if event["type"] in {"turn.started", "turn/started"}:
+            current_turn_id = event.get("turnId") or event.get("payload", {}).get("turn", {}).get("id")
+        elif event["type"] == "item/started":
+            item = event["payload"].get("item", {})
+            if item.get("type") == "agentMessage":
+                agent_message_phases[item["id"]] = item.get("phase")
+        elif event["type"] == "item/agentMessage/delta":
+            item_id = event["payload"].get("itemId")
+            phase = agent_message_phases.get(item_id)
+            if phase in (None, "final_answer"):
+                assistant_fragments.append(event["payload"]["delta"])
+        elif event["type"] == "turn/completed":
+            final_turn = event["payload"].get("turn", {})
+    printer.finish()
+    return {
+        "threadId": current_thread_id,
+        "turnId": current_turn_id,
+        "assistantText": "".join(assistant_fragments).strip(),
+        "turn": final_turn,
+    }
 
 
 async def _interactive_chat(args: argparse.Namespace) -> int:
@@ -98,18 +228,19 @@ async def _interactive_chat(args: argparse.Namespace) -> int:
                 print("Logged out.")
                 return 0
 
-            result = await service.chat(
-                prompt,
+            result = await _run_chat_stream(
+                service,
+                prompt=prompt,
                 thread_id=thread_id,
                 cwd=args.cwd,
                 model=args.model,
                 approval_policy=args.approval_policy,
                 sandbox=args.sandbox,
                 effort=args.effort,
+                summary=args.summary,
                 personality=args.personality,
             )
             thread_id = result["threadId"]
-            print(result["assistantText"])
     finally:
         await service.close()
 
@@ -154,7 +285,10 @@ async def run_async(args: argparse.Namespace) -> int:
         if args.command == "chat":
             if not args.prompt:
                 raise SystemExit("chat requires a prompt unless --interactive is used")
-            if args.stream and not args.json:
+            should_stream = not args.json and not args.no_stream
+            if args.stream:
+                should_stream = True
+            if should_stream:
                 await _run_chat_stream(
                     service,
                     prompt=args.prompt,
@@ -164,6 +298,7 @@ async def run_async(args: argparse.Namespace) -> int:
                     approval_policy=args.approval_policy,
                     sandbox=args.sandbox,
                     effort=args.effort,
+                    summary=args.summary,
                     personality=args.personality,
                 )
                 return 0
@@ -175,6 +310,7 @@ async def run_async(args: argparse.Namespace) -> int:
                 approval_policy=args.approval_policy,
                 sandbox=args.sandbox,
                 effort=args.effort,
+                summary=args.summary,
                 personality=args.personality,
             )
             if args.json:

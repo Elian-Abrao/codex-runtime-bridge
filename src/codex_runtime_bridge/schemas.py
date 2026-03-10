@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     approval_policy: str | None = Field(default=None, alias="approvalPolicy")
     sandbox: str | None = None
     effort: str | None = None
+    summary: str | None = None
     personality: str | None = None
 
     model_config = {"populate_by_name": True}
@@ -62,4 +63,3 @@ class LoginStartResponse(BaseModel):
     auth_url: str | None = Field(default=None, alias="authUrl")
 
     model_config = {"populate_by_name": True}
-

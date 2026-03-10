@@ -154,6 +154,7 @@ class CodexBridgeService:
         approval_policy: str | None = None,
         sandbox: str | None = None,
         effort: str | None = None,
+        summary: str | None = None,
         personality: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         if not thread_id:
@@ -183,6 +184,7 @@ class CodexBridgeService:
                     "model": model,
                     "approvalPolicy": approval_policy,
                     "effort": effort,
+                    "summary": summary,
                     "personality": personality,
                 },
             )
@@ -229,6 +231,7 @@ class CodexBridgeService:
         approval_policy: str | None = None,
         sandbox: str | None = None,
         effort: str | None = None,
+        summary: str | None = None,
         personality: str | None = None,
     ) -> dict[str, Any]:
         events: list[dict[str, Any]] = []
@@ -236,6 +239,7 @@ class CodexBridgeService:
         final_turn: JsonDict | None = None
         current_thread_id = thread_id
         current_turn_id: str | None = None
+        agent_message_phases: dict[str, str | None] = {}
 
         async for event in self.stream_turn(
             prompt=prompt,
@@ -245,14 +249,22 @@ class CodexBridgeService:
             approval_policy=approval_policy,
             sandbox=sandbox,
             effort=effort,
+            summary=summary,
             personality=personality,
         ):
             events.append(event)
             current_thread_id = event.get("threadId", current_thread_id)
             if event["type"] == "turn.started":
                 current_turn_id = event["turnId"]
+            elif event["type"] == "item/started":
+                item = event["payload"].get("item", {})
+                if item.get("type") == "agentMessage":
+                    agent_message_phases[item["id"]] = item.get("phase")
             elif event["type"] == "item/agentMessage/delta":
-                assistant_fragments.append(event["payload"]["delta"])
+                item_id = event["payload"].get("itemId")
+                phase = agent_message_phases.get(item_id)
+                if phase in (None, "final_answer"):
+                    assistant_fragments.append(event["payload"]["delta"])
             elif event["type"] == "turn/completed":
                 final_turn = event["payload"]["turn"]
 
@@ -272,4 +284,3 @@ async def bridge_service() -> AsyncIterator[CodexBridgeService]:
         yield service
     finally:
         await service.close()
-

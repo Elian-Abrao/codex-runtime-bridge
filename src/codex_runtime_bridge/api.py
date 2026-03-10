@@ -73,6 +73,7 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             approval_policy=request.approval_policy,
             sandbox=request.sandbox,
             effort=request.effort,
+            summary=request.summary,
             personality=request.personality,
         )
 
@@ -87,6 +88,7 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
                 approval_policy=request.approval_policy,
                 sandbox=request.sandbox,
                 effort=request.effort,
+                summary=request.summary,
                 personality=request.personality,
             ):
                 yield _sse(event)
@@ -103,4 +105,3 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
         )
 
     return app
-

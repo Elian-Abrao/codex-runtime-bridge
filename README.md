@@ -140,10 +140,19 @@ Run a one-shot prompt:
 codex-runtime-bridge chat "Reply with OK only."
 ```
 
+By default, terminal output is incremental when `--json` is not used.
+Use `--no-stream` to wait for the full response before printing.
+
 Run a streaming prompt:
 
 ```bash
 codex-runtime-bridge chat --stream "Explain what you are doing in one sentence."
+```
+
+Request richer reasoning summaries when the upstream runtime emits them:
+
+```bash
+codex-runtime-bridge chat --summary detailed "Think step by step, then answer briefly."
 ```
 
 Run an interactive chat loop:
@@ -271,6 +280,8 @@ async def main() -> None:
     print(await client.health())
     print(await client.account())
     print(await client.chat("Reply with OK only."))
+    async for event in client.stream_chat("Explain what you are doing in one short sentence."):
+        print(event)
     await client.close()
 
 
@@ -348,4 +359,3 @@ The official Codex runtime already provides:
 Reimplementing all of that in a parallel runtime is the wrong tradeoff.
 
 This repository exists to make the real runtime easier to consume, not to clone it.
-
