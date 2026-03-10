@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codex-runtime-bridge"
+version = "0.1.0"
+description = "Bridge, API, SDK, and CLI on top of the real Codex app-server runtime."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Elian Abrao" }
+]
+dependencies = [
+  "fastapi>=0.116.1",
+  "httpx>=0.28.1",
+  "pydantic>=2.11.0",
+  "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+codex-runtime-bridge = "codex_runtime_bridge.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codex_runtime_bridge"]
+
