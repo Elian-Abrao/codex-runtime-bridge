@@ -1,45 +1,97 @@
 # codex-runtime-bridge
 
-`codex-runtime-bridge` is a thin programmable layer on top of the real `codex app-server`.
+`codex-runtime-bridge` exposes the real Codex runtime running on your machine so you can use it from other applications, other devices, and future agent products.
 
-The goal is simple:
+This repository exists because the official Codex CLI is already extremely capable on a developer workstation, but it is still hard to use that same runtime from:
 
-- keep using the official Codex runtime
-- avoid reimplementing auth, sessions, tools, approvals, and agent behavior
-- expose that runtime through:
-  - a Python SDK
-  - an HTTP API
-  - a CLI
+- a phone
+- a web app
+- a custom desktop app
+- another local or remote service
+- a future personalized agent product
 
-This repository is intentionally not a replacement for Codex itself. It is an adapter around the real Codex runtime already available through `codex app-server`.
+The goal is not to replace Codex.
 
-## Status
+The goal is to make the real Codex runtime programmable and reachable.
 
-This repository already provides a functional first vertical slice:
+## Core Idea
+
+Instead of rebuilding auth, sessions, tools, approvals, and agent behavior from scratch, this project sits on top of the official `codex app-server` and provides:
+
+- a Python SDK
+- an HTTP API
+- a thin CLI for testing and operations
+
+So the architecture becomes:
+
+```text
+consumer app / phone / automation
+        |
+        v
+codex-runtime-bridge
+        |
+        v
+codex app-server
+        |
+        v
+real Codex runtime on your machine
+```
+
+## Why This Exists
+
+The primary pain this project solves is remote access to the Codex agent that already runs on your computer.
+
+Example:
+
+- you are away from home
+- your workstation is still available
+- you want to continue working from your phone
+- you want the real Codex runtime to keep interacting with your machine
+- you do not want to rebuild Codex just to expose it through an API
+
+That is the main reason this repository exists.
+
+The longer-term expansion is also clear:
+
+- reuse the same bridge from many projects
+- build richer agent products on top of it
+- personalize workflows without forking or cloning the Codex runtime itself
+
+## Product Boundaries
+
+This repository **should** contain:
+
+- process management for `codex app-server`
+- JSON-RPC transport handling
+- protocol translation
+- a stable bridge API
+- a Python SDK
+- a thin CLI for operations and smoke tests
+
+This repository **should not** become:
+
+- a full replacement for the official Codex CLI
+- a parallel reimplementation of the Codex runtime
+- the final end-user personalized assistant product
+
+Those richer products should consume this repository, not be merged into it.
+
+## Current Status
+
+The repository already has a functional first vertical slice:
 
 - start and manage a local `codex app-server` subprocess
 - initialize the JSON-RPC session
 - read account/auth state
 - start ChatGPT login through Codex's native auth flow
-- list models
+- list models from the real runtime
 - start threads
-- run turns and stream turn events
+- run turns and stream real turn events
 - execute `command/exec`
-- expose the same capabilities via CLI and HTTP
-
-## Product Shape
-
-This project is the reusable base layer.
-
-It should contain:
-
-- process management for the official Codex runtime
-- protocol translation
-- a stable API for other projects
-- a Python SDK
-- a thin CLI for development and testing
-
-It should not become the final personal agent product. A future consumer repository can build a richer agent UX on top of this bridge.
+- expose the same capabilities through:
+  - CLI
+  - HTTP
+  - Python SDK
 
 ## Requirements
 
@@ -79,12 +131,19 @@ List models:
 
 ```bash
 codex-runtime-bridge models
+codex-runtime-bridge models --json
 ```
 
 Run a one-shot prompt:
 
 ```bash
 codex-runtime-bridge chat "Reply with OK only."
+```
+
+Run a streaming prompt:
+
+```bash
+codex-runtime-bridge chat --stream "Explain what you are doing in one sentence."
 ```
 
 Run an interactive chat loop:
@@ -103,6 +162,12 @@ Start the HTTP server:
 
 ```bash
 codex-runtime-bridge serve
+```
+
+Use a non-default Codex binary:
+
+```bash
+CODEX_COMMAND=/path/to/codex codex-runtime-bridge account
 ```
 
 ## HTTP API
@@ -214,30 +279,73 @@ asyncio.run(main())
 
 ## Architecture
 
-The current architecture is intentionally simple:
+The current implementation is intentionally thin:
 
-- `rpc.py`
+- [`rpc.py`](./src/codex_runtime_bridge/rpc.py)
   - stdio JSON-RPC client for `codex app-server`
-- `service.py`
-  - high-level bridge methods on top of the Codex runtime
-- `api.py`
-  - HTTP facade on top of the same service
-- `http_client.py`
-  - SDK client for the HTTP API
-- `cli.py`
+- [`service.py`](./src/codex_runtime_bridge/service.py)
+  - bridge methods on top of the official runtime
+- [`api.py`](./src/codex_runtime_bridge/api.py)
+  - HTTP facade on top of the same bridge service
+- [`http_client.py`](./src/codex_runtime_bridge/http_client.py)
+  - HTTP client SDK
+- [`cli.py`](./src/codex_runtime_bridge/cli.py)
   - terminal UX for login, models, chat, exec, and serve
 
-## Why this repository exists
+Additional design documents:
 
-The official Codex runtime already exposes:
+- [Architecture](./docs/ARCHITECTURE.md)
+- [Deployment](./docs/DEPLOYMENT.md)
+- [Roadmap](./docs/ROADMAP.md)
+
+## Security
+
+This bridge sits in front of a privileged local coding agent.
+
+That means:
+
+- it must be treated as sensitive infrastructure
+- it should not be exposed directly to the public internet
+- it should be placed behind a secure access layer when used remotely
+
+Recommended patterns:
+
+- Tailscale
+- WireGuard
+- SSH tunnel
+- Cloudflare Access in front of a private service
+- a private reverse proxy with strong authentication
+
+Do **not** assume that “it is only a chat API”. The underlying runtime can operate on your machine through the real Codex runtime.
+
+## Validation
+
+Typical local validation:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+python -m unittest discover -s tests -p 'test_*.py'
+codex-runtime-bridge account
+codex-runtime-bridge models --json
+codex-runtime-bridge chat "Reply with OK only."
+codex-runtime-bridge exec -- pwd
+```
+
+## Why This Is Better Than Rebuilding Codex
+
+The official Codex runtime already provides:
 
 - auth
 - threads and turns
 - streaming events
 - command execution
-- tools and approvals
+- approvals
+- tools
+- MCP/app-server surfaces
 
-Reimplementing all of that in another runtime is the wrong tradeoff.
+Reimplementing all of that in a parallel runtime is the wrong tradeoff.
 
-This project exists to make the real Codex runtime easier to consume from applications, automations, and future agent products.
+This repository exists to make the real runtime easier to consume, not to clone it.
 

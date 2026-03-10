@@ -4,6 +4,12 @@
 
 This repository is a programmable bridge on top of the real `codex app-server`.
 
+The primary user problem is:
+
+- "I already use Codex on my machine every day"
+- "I want to keep using that same runtime from other devices, including my phone"
+- "I do not want to rebuild Codex just to expose it"
+
 The core rule for this codebase is:
 
 - do not reimplement the Codex runtime when the official runtime already provides the capability
@@ -29,6 +35,7 @@ This repository should own:
 - API translation
 - SDK ergonomics
 - CLI for development and smoke tests
+- safe access patterns for local and remote use
 
 This repository should not own:
 
@@ -44,6 +51,8 @@ Those belong in future consumer repositories.
 - Prefer Python standard library unless an external dependency clearly improves delivery.
 - Treat the official Codex runtime as the source of truth for auth, thread state, approvals, and tools.
 - If a behavior differs from official Codex, document the bridge-specific behavior explicitly.
+- Prefer exposing upstream semantics over inventing a new semantic layer unless the bridge UX clearly needs it.
+- Do not document or implement direct unauthenticated public exposure as a recommended deployment pattern.
 - Preserve a clean separation between:
   - transport/protocol code
   - bridge service methods
@@ -66,6 +75,24 @@ src/codex_runtime_bridge/
 tests/
 ```
 
+## Deployment Stance
+
+This repository is intended to make a privileged local Codex runtime reachable.
+
+That means deployment guidance must assume:
+
+- local-first execution
+- remote access only through authenticated private networking or secure gateways
+
+Recommended examples:
+
+- Tailscale
+- WireGuard
+- SSH tunnels
+- private reverse proxies with strong auth
+
+Avoid presenting "open port to the internet" as an acceptable default.
+
 ## Validation
 
 When changing this project:
@@ -73,6 +100,7 @@ When changing this project:
 1. install the package in a local venv
 2. run unit tests
 3. validate against the real `codex` binary when possible
+4. validate both CLI and HTTP paths when changing bridge behavior
 
 Typical commands:
 
@@ -83,6 +111,8 @@ pip install -e .
 python -m unittest discover -s tests -p 'test_*.py'
 codex-runtime-bridge account
 codex-runtime-bridge models
+codex-runtime-bridge chat "Reply with OK only."
+codex-runtime-bridge exec -- pwd
 ```
 
 ## Notes
@@ -90,4 +120,5 @@ codex-runtime-bridge models
 - `codex app-server` is the upstream engine
 - this repo is the adapter layer
 - if you find yourself rebuilding upstream runtime behavior here, stop and reassess
+- a future personal agent product should consume this repository instead of replacing it
 
