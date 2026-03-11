@@ -90,6 +90,7 @@ The repository already has a functional first vertical slice:
 - surface upstream server requests such as approvals and tool input prompts
 - expose a first bridge-level slash command layer for interactive use
 - execute `command/exec`
+- expose a stable consumer-facing stream contract for downstream gateways
 - expose the same capabilities through:
   - CLI
   - HTTP
@@ -198,6 +199,8 @@ CODEX_COMMAND=/path/to/codex codex-runtime-bridge account
 Health:
 
 ```bash
+curl http://127.0.0.1:8787/healthz
+curl http://127.0.0.1:8787/readyz
 curl http://127.0.0.1:8787/v1/health
 ```
 
@@ -247,6 +250,20 @@ curl -N -X POST http://127.0.0.1:8787/v1/chat/stream \
   }'
 ```
 
+Stable consumer stream for downstream apps such as `codex-chat-gateway`:
+
+```bash
+curl -N -X POST http://127.0.0.1:8787/v1/chat/consumer-stream \
+  -H 'Content-Type: application/json' \
+  -H 'X-Request-ID: demo-consumer-1' \
+  -d '{
+    "prompt": "Reply with OK only."
+  }'
+```
+
+The raw stream at `/v1/chat/stream` stays available, but new consumers should prefer
+`/v1/chat/consumer-stream`.
+
 Respond to an upstream server request such as an approval:
 
 ```bash
@@ -259,6 +276,33 @@ curl -X POST http://127.0.0.1:8787/v1/server-requests/respond \
     }
   }'
 ```
+
+## Consumer Contract
+
+Recommended downstream-consumer behavior:
+
+- use `/readyz` for readiness probes
+- send `X-Request-ID` on every request
+- prefer `/v1/chat/consumer-stream` over the raw stream
+- treat `/v1/chat/stream` as a low-level compatibility path
+- expect standardized error envelopes on non-streaming HTTP failures
+
+Error shape:
+
+```json
+{
+  "error": {
+    "code": "upstream_request_failed",
+    "message": "account/read failed (-32000): boom",
+    "details": {
+      "method": "account/read"
+    },
+    "requestId": "req_123"
+  }
+}
+```
+
+The full contract is documented in [docs/CONSUMER_CONTRACT.md](docs/CONSUMER_CONTRACT.md).
 
 List the currently supported bridge slash commands:
 

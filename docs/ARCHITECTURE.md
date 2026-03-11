@@ -74,14 +74,20 @@ Codex runtime on the machine
 - `bridge/events.py`
   - stable internal event model for streamed bridge activity
 
+- `bridge/consumer_events.py`
+  - projects low-level bridge events into a stable consumer stream
+  - intended for downstream gateways and remote apps
+
 - `bridge/translator.py`
   - translates upstream JSON-RPC messages into bridge events
 
 - `http/api.py`
   - exposes a simple HTTP layer on top of `bridge/service.py`
+  - keeps both raw and consumer-oriented SSE contracts
 
 - `http/client.py`
   - client SDK for the HTTP layer
+  - now understands standardized HTTP errors and the consumer SSE stream
 
 - `http/schemas.py`
   - Pydantic request and response contracts for the HTTP layer
@@ -98,8 +104,23 @@ This repository should evolve toward:
 
 1. better coverage of upstream app-server methods
 2. clearer event translation
-3. better remote-operability guidance
-4. stronger consumer interfaces
+3. stronger consumer interfaces
+4. better remote-operability guidance
+5. better operational diagnostics for downstream gateways
+
+## Consumer Contract
+
+The bridge now exposes two streaming levels:
+
+- raw stream
+  - `/v1/chat/stream`
+  - close to upstream event semantics
+
+- consumer stream
+  - `/v1/chat/consumer-stream`
+  - projected stable event categories such as `commentary`, `reasoning_summary`, `action`, `approval_request`, and `final`
+
+This split keeps the bridge thin while still giving downstream projects a stable contract.
 
 It should not evolve toward:
 

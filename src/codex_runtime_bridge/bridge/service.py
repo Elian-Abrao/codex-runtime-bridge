@@ -9,6 +9,8 @@ from typing import Any, AsyncIterator
 from .commands import SlashCommandContext
 from .commands import available_slash_commands as list_slash_commands
 from .commands import execute_slash_command as run_slash_command
+from .consumer_events import ConsumerEventProjector
+from .consumer_events import ConsumerStreamEvent
 from .events import BridgeEvent
 from .translator import translate_upstream_message
 from ..transport import AppServerConnection
@@ -28,6 +30,10 @@ class CodexBridgeService:
     @property
     def initialized(self) -> bool:
         return self._connection.initialized
+
+    @property
+    def recent_stderr(self) -> list[str]:
+        return self._connection.recent_stderr
 
     async def close(self) -> None:
         await self._connection.close()
@@ -422,6 +428,35 @@ class CodexBridgeService:
             personality=personality,
         ):
             yield event.to_dict()
+
+    async def stream_consumer_events(
+        self,
+        *,
+        prompt: str,
+        thread_id: str | None = None,
+        cwd: str | Path | None = None,
+        model: str | None = None,
+        approval_policy: str | None = None,
+        sandbox: str | None = None,
+        effort: str | None = None,
+        summary: str | None = None,
+        personality: str | None = None,
+    ) -> AsyncIterator[ConsumerStreamEvent]:
+        projector = ConsumerEventProjector()
+        async for event in projector.project(
+            self.stream_turn_events(
+                prompt=prompt,
+                thread_id=thread_id,
+                cwd=cwd,
+                model=model,
+                approval_policy=approval_policy,
+                sandbox=sandbox,
+                effort=effort,
+                summary=summary,
+                personality=personality,
+            )
+        ):
+            yield event
 
     async def chat(
         self,

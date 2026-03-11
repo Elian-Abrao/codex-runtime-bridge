@@ -2,12 +2,23 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from uuid import uuid4
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
 
 from ..bridge import CodexBridgeService
+from ..transport import AppServerProcessError
+from ..transport import JsonRpcRequestError
+from .errors import REQUEST_ID_HEADER
+from .errors import build_error_response
+from .errors import build_error_envelope
+from .errors import error_info_from_exception
+from .errors import handle_http_exception
+from .errors import handle_validation_error
+from .errors import request_id_from_request
 from .schemas import ChatRequest
 from .schemas import ChatResponse
 from .schemas import CommandExecRequest
@@ -21,8 +32,12 @@ from .schemas import ServerRequestResolveRequest
 from .schemas import ThreadStartRequest
 
 
-def _sse(message: dict[str, Any]) -> bytes:
-    return f"data: {json.dumps(message, ensure_ascii=False)}\n\n".encode("utf-8")
+def _sse(message: dict[str, Any], *, event: str | None = None) -> bytes:
+    lines: list[str] = []
+    if event:
+        lines.append(f"event: {event}")
+    lines.append(f"data: {json.dumps(message, ensure_ascii=False)}")
+    return ("\n".join(lines) + "\n\n").encode("utf-8")
 
 
 def create_app(service: CodexBridgeService | None = None) -> FastAPI:
@@ -36,6 +51,76 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             await bridge.close()
 
     app = FastAPI(title="Codex Runtime Bridge", version="0.1.0", lifespan=lifespan)
+    app.add_exception_handler(HTTPException, handle_http_exception)
+    app.add_exception_handler(RequestValidationError, handle_validation_error)
+
+    @app.middleware("http")
+    async def request_context(request: Request, call_next):
+        request_id = request.headers.get(REQUEST_ID_HEADER) or uuid4().hex
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
+
+    def with_stderr_tail(details: dict[str, Any]) -> dict[str, Any]:
+        if not bridge.recent_stderr:
+            return details
+        return {
+            **details,
+            "stderrTail": bridge.recent_stderr[-20:],
+        }
+
+    @app.exception_handler(JsonRpcRequestError)
+    async def jsonrpc_error(request: Request, exc: JsonRpcRequestError):
+        status_code, code, message, details = error_info_from_exception(exc)
+        return build_error_response(
+            request,
+            status_code=status_code,
+            code=code,
+            message=message,
+            details=with_stderr_tail(details),
+        )
+
+    @app.exception_handler(AppServerProcessError)
+    async def process_error(request: Request, exc: AppServerProcessError):
+        status_code, code, message, details = error_info_from_exception(exc)
+        return build_error_response(
+            request,
+            status_code=status_code,
+            code=code,
+            message=message,
+            details=with_stderr_tail(details),
+        )
+
+    @app.exception_handler(TimeoutError)
+    async def timeout_error(request: Request, exc: TimeoutError):
+        status_code, code, message, details = error_info_from_exception(exc)
+        return build_error_response(
+            request,
+            status_code=status_code,
+            code=code,
+            message=message,
+            details=with_stderr_tail(details),
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request: Request, exc: Exception):
+        status_code, code, message, details = error_info_from_exception(exc)
+        return build_error_response(
+            request,
+            status_code=status_code,
+            code=code,
+            message=message,
+            details=with_stderr_tail(details),
+        )
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.get("/readyz", response_model=HealthResponse)
+    async def readyz() -> dict[str, Any]:
+        return await bridge.health()
 
     @app.get("/v1/health", response_model=HealthResponse)
     async def health() -> dict[str, Any]:
@@ -103,7 +188,43 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
                 summary=request.summary,
                 personality=request.personality,
             ):
-                yield _sse(event.to_dict())
+                yield _sse(event.to_dict(), event=event.type)
+
+        return StreamingResponse(body(), media_type="text/event-stream")
+
+    @app.post("/v1/chat/consumer-stream")
+    async def chat_consumer_stream(request: ChatRequest, http_request: Request) -> StreamingResponse:
+        request_id = request_id_from_request(http_request)
+
+        async def body() -> AsyncIterator[bytes]:
+            try:
+                async for event in bridge.stream_consumer_events(
+                    prompt=request.prompt,
+                    thread_id=request.thread_id,
+                    cwd=request.cwd,
+                    model=request.model,
+                    approval_policy=request.approval_policy,
+                    sandbox=request.sandbox,
+                    effort=request.effort,
+                    summary=request.summary,
+                    personality=request.personality,
+                ):
+                    yield _sse(event.to_dict(), event=event.event)
+            except Exception as exc:
+                _, code, message, details = error_info_from_exception(exc)
+                if bridge.recent_stderr:
+                    details = {
+                        **details,
+                        "stderrTail": bridge.recent_stderr[-20:],
+                    }
+                error_event = {
+                    "event": "error",
+                    "code": code,
+                    "message": message,
+                    "requestId": request_id,
+                    "details": details,
+                }
+                yield _sse(error_event, event="error")
 
         return StreamingResponse(body(), media_type="text/event-stream")
 
@@ -137,7 +258,10 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
         return {"commands": bridge.available_slash_commands()}
 
     @app.post("/v1/slash-commands/execute", response_model=SlashCommandExecuteResponse)
-    async def slash_command_execute(request: SlashCommandExecuteRequest) -> dict[str, Any]:
+    async def slash_command_execute(
+        request: SlashCommandExecuteRequest,
+        http_request: Request,
+    ) -> dict[str, Any]:
         try:
             return await bridge.execute_slash_command(
                 request.command,
@@ -150,6 +274,13 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
                 ephemeral=request.ephemeral,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=400,
+                detail=build_error_envelope(
+                    http_request,
+                    code="invalid_request",
+                    message=str(exc),
+                ).model_dump(by_alias=True),
+            ) from exc
 
     return app

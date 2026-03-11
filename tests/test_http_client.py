@@ -5,6 +5,7 @@ import unittest
 import httpx
 
 from codex_runtime_bridge.http import BridgeHttpClient
+from codex_runtime_bridge.http.client import BridgeHttpError
 
 
 class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
@@ -37,6 +38,68 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
                 {"type": "turn/completed", "payload": {"turn": {"id": "turn_1"}}},
             ],
         )
+
+    async def test_stream_consumer_chat_parses_named_sse_events(self) -> None:
+        async def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=(
+                    b'event: status\n'
+                    b'data: {"event":"status","phase":"turn_started","message":"Turn started."}\n\n'
+                    b'event: final\n'
+                    b'data: {"event":"final","text":"Hi"}\n\n'
+                ),
+            )
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        events = [event async for event in client.stream_consumer_chat("hi")]
+
+        self.assertEqual(
+            events,
+            [
+                {"event": "status", "phase": "turn_started", "message": "Turn started."},
+                {"event": "final", "text": "Hi"},
+            ],
+        )
+
+    async def test_chat_raises_bridge_http_error_with_standardized_payload(self) -> None:
+        async def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                503,
+                json={
+                    "error": {
+                        "code": "app_server_unavailable",
+                        "message": "codex app-server exited",
+                        "details": {},
+                        "requestId": "req_http_1",
+                    }
+                },
+            )
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        with self.assertRaises(BridgeHttpError) as raised:
+            await client.chat("hi")
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(raised.exception.code, "app_server_unavailable")
+        self.assertEqual(raised.exception.request_id, "req_http_1")
 
     async def test_respond_server_request_posts_expected_payload(self) -> None:
         captured: dict[str, object] = {}

@@ -5,6 +5,21 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ErrorInfo(BaseModel):
+    code: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    request_id: str | None = Field(default=None, alias="requestId")
+
+    model_config = {"populate_by_name": True}
+
+
+class ErrorEnvelope(BaseModel):
+    error: ErrorInfo
+
+    model_config = {"populate_by_name": True}
+
+
 class HealthResponse(BaseModel):
     ok: bool
     codex_command: str = Field(alias="codexCommand")

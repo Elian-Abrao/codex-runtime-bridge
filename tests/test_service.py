@@ -46,6 +46,15 @@ class FakeConnection:
                     self._item_started("final_item", "final_answer"),
                     self._delta("final_item", "Answer"),
                 ]
+            elif prompt == "consumer rich":
+                events = [
+                    self._item_started("commentary_item", "commentary"),
+                    self._delta("commentary_item", "Thinking through the machine state."),
+                    self._reasoning_delta("reason_1", "Checking resource usage."),
+                    self._command_started("cmd_1", "pwd"),
+                    self._item_started("final_item", "final_answer"),
+                    self._delta("final_item", "All good."),
+                ]
             elif prompt == "needs approval":
                 events = [
                     self._request_approval("req_1", "rm -rf /tmp/demo"),
@@ -161,6 +170,31 @@ class FakeConnection:
             },
         }
 
+    def _reasoning_delta(self, item_id: str, delta: str) -> dict:
+        return {
+            "method": "item/reasoning/summaryTextDelta",
+            "params": {
+                "threadId": "thr_1",
+                "turnId": "turn_1",
+                "itemId": item_id,
+                "delta": delta,
+            },
+        }
+
+    def _command_started(self, item_id: str, command: str) -> dict:
+        return {
+            "method": "item/started",
+            "params": {
+                "threadId": "thr_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "commandExecution",
+                    "id": item_id,
+                    "command": command,
+                },
+            },
+        }
+
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_chat_aggregates_deltas(self) -> None:
@@ -199,6 +233,33 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         approval_event = next(event for event in events if event["type"] == "item/commandExecution/requestApproval")
         self.assertEqual(approval_event["requestId"], "req_1")
         self.assertEqual(approval_event["payload"]["command"], "rm -rf /tmp/demo")
+
+    async def test_stream_consumer_events_projects_stable_progress_events(self) -> None:
+        service = CodexBridgeService(connection=FakeConnection())
+
+        events = [event.to_dict() async for event in service.stream_consumer_events(prompt="consumer rich")]
+
+        self.assertEqual(
+            [event["event"] for event in events],
+            ["status", "status", "commentary", "reasoning_summary", "action", "final"],
+        )
+        self.assertEqual(events[0]["phase"], "thread_started")
+        self.assertEqual(events[1]["phase"], "turn_started")
+        self.assertEqual(events[2]["text"], "Thinking through the machine state.")
+        self.assertEqual(events[3]["text"], "Checking resource usage.")
+        self.assertEqual(events[4]["actionType"], "command_execution")
+        self.assertEqual(events[4]["text"], "Executing command: pwd")
+        self.assertEqual(events[5]["text"], "All good.")
+
+    async def test_stream_consumer_events_projects_approval_requests(self) -> None:
+        service = CodexBridgeService(connection=FakeConnection())
+
+        events = [event.to_dict() async for event in service.stream_consumer_events(prompt="needs approval")]
+
+        approval_event = next(event for event in events if event["event"] == "approval_request")
+        self.assertEqual(approval_event["approvalType"], "command_execution")
+        self.assertEqual(approval_event["requestId"], "req_1")
+        self.assertEqual(approval_event["details"]["command"], "rm -rf /tmp/demo")
 
     async def test_respond_server_request_uses_connection_response_channel(self) -> None:
         connection = FakeConnection()

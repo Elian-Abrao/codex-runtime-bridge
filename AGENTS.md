@@ -70,12 +70,14 @@ src/codex_runtime_bridge/
     rpc.py
   bridge/
     commands/
+    consumer_events.py
     events.py
     service.py
     translator.py
   http/
     api.py
     client.py
+    errors.py
     schemas.py
   cli/
     main.py
