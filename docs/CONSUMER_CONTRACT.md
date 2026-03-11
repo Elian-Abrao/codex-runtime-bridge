@@ -188,10 +188,30 @@ Supported stable event names:
 {
   "event": "final",
   "text": "All good.",
+  "attachments": [
+    {
+      "kind": "image",
+      "localPath": "/tmp/screenshot.png",
+      "fileName": "screenshot.png",
+      "mimeType": "image/png",
+      "sizeBytes": 42133
+    }
+  ],
   "threadId": "thr_1",
   "turnId": "turn_1"
 }
 ```
+
+The `final` event may include `attachments` when the assistant explicitly asks a downstream
+consumer to send one or more existing local files. The bridge currently recognizes the
+following directive when it appears on its own line in the assistant's final answer:
+
+```text
+[bridge-attachment path="/absolute/path/to/file.ext"]
+```
+
+The bridge strips those directive lines from `text` and exposes the normalized files through
+`attachments`.
 
 `error`
 

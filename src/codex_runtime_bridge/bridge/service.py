@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator
 from .commands import SlashCommandContext
 from .commands import available_slash_commands as list_slash_commands
 from .commands import execute_slash_command as run_slash_command
+from .attachments import extract_attachment_directives
 from .consumer_events import ConsumerEventProjector
 from .consumer_events import ConsumerStreamEvent
 from .events import BridgeEvent
@@ -542,13 +543,20 @@ class CodexBridgeService:
             elif event.type == "turn/completed":
                 final_turn = event.turn
 
-        return {
+        parsed = extract_attachment_directives("".join(assistant_fragments).strip())
+        response: dict[str, Any] = {
             "threadId": current_thread_id,
             "turnId": current_turn_id,
-            "assistantText": "".join(assistant_fragments).strip(),
+            "assistantText": parsed.text,
             "turn": final_turn or {},
             "events": events,
         }
+        if parsed.attachments:
+            response["attachments"] = parsed.attachments
+        if parsed.errors:
+            response["attachmentErrors"] = parsed.errors
+
+        return response
 
 
 @contextlib.asynccontextmanager

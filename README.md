@@ -172,6 +172,17 @@ By default, chat and thread operations now use a dedicated bridge workspace inst
 
 The bridge bootstraps an `AGENTS.md` file there on first use. If you want Codex to operate inside a real project, pass `--cwd /path/to/project`.
 
+That default `AGENTS.md` also teaches the runtime how to ask downstream consumers to send an
+existing local file back to the user. The current bridge directive is:
+
+```text
+[bridge-attachment path="/absolute/path/to/file.ext"]
+```
+
+When that line appears in the assistant's final answer, the bridge strips it from the human text
+and exposes the referenced file as a normalized attachment to consumers such as
+`codex-chat-gateway`.
+
 Inside interactive chat, the bridge currently supports:
 
 ```text

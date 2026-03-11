@@ -63,7 +63,11 @@ class FakeApiService:
 
     async def stream_consumer_events(self, **_: object):
         yield ConsumerStreamEvent(event="status", phase="turn_started", message="Turn started.")
-        yield ConsumerStreamEvent(event="final", text="All good.")
+        yield ConsumerStreamEvent(
+            event="final",
+            text="All good.",
+            attachments=[{"kind": "image", "localPath": "/tmp/demo.png", "fileName": "demo.png"}],
+        )
 
     async def exec_command(self, command: list[str], **_: object) -> dict[str, object]:
         return {"command": command, "exitCode": 0}
@@ -122,6 +126,7 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"event": "status"', body)
         self.assertIn("event: final", body)
         self.assertIn('"text": "All good."', body)
+        self.assertIn('"attachments": [{"kind": "image"', body)
 
     async def test_thread_read_and_resume_routes_delegate_to_service(self) -> None:
         read_response = await self.client.get("/v1/threads/thr_demo")

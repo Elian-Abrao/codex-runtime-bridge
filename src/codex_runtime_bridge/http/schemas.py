@@ -48,6 +48,8 @@ class ChatResponse(BaseModel):
     assistant_text: str = Field(alias="assistantText")
     turn: dict[str, Any]
     events: list[dict[str, Any]]
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    attachment_errors: list[str] = Field(default_factory=list, alias="attachmentErrors")
 
     model_config = {"populate_by_name": True}
 

@@ -48,7 +48,7 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
                     b'event: status\n'
                     b'data: {"event":"status","phase":"turn_started","message":"Turn started."}\n\n'
                     b'event: final\n'
-                    b'data: {"event":"final","text":"Hi"}\n\n'
+                    b'data: {"event":"final","text":"Hi","attachments":[{"kind":"file","localPath":"/tmp/demo.txt"}]}\n\n'
                 ),
             )
 
@@ -67,7 +67,7 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
             events,
             [
                 {"event": "status", "phase": "turn_started", "message": "Turn started."},
-                {"event": "final", "text": "Hi"},
+                {"event": "final", "text": "Hi", "attachments": [{"kind": "file", "localPath": "/tmp/demo.txt"}]},
             ],
         )
 

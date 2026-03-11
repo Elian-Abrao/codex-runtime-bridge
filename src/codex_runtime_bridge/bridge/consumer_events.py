@@ -7,6 +7,7 @@ from typing import AsyncIterator
 from typing import Literal
 
 from ..transport import JsonDict
+from .attachments import extract_attachment_directives
 from .events import BridgeEvent
 
 ConsumerEventName = Literal[
@@ -37,6 +38,7 @@ class ConsumerStreamEvent:
     approval_type: str | None = None
     code: str | None = None
     source_type: str | None = None
+    attachments: list[JsonDict] = field(default_factory=list)
     details: JsonDict = field(default_factory=dict)
 
     def to_dict(self) -> JsonDict:
@@ -61,6 +63,8 @@ class ConsumerStreamEvent:
             data["code"] = self.code
         if self.source_type is not None:
             data["sourceType"] = self.source_type
+        if self.attachments:
+            data["attachments"] = self.attachments
         if self.details:
             data["details"] = self.details
         return data
@@ -117,6 +121,7 @@ class ConsumerEventProjector:
         approval_type: str | None = None,
         source_type: str | None = None,
         request_id: str | int | None = None,
+        attachments: list[JsonDict] | None = None,
         details: JsonDict | None = None,
     ) -> ConsumerStreamEvent:
         return ConsumerStreamEvent(
@@ -130,6 +135,7 @@ class ConsumerEventProjector:
             action_type=action_type,
             approval_type=approval_type,
             source_type=source_type,
+            attachments=list(attachments or []),
             details=details or {},
         )
 
@@ -382,14 +388,18 @@ class ConsumerEventProjector:
             maybe_reasoning = self._flush_reasoning(force=True)
             if maybe_reasoning is not None:
                 emitted.append(maybe_reasoning)
-            final_text = "".join(self._assistant_fragments).strip()
-            if final_text:
+            parsed = extract_attachment_directives("".join(self._assistant_fragments).strip())
+            details: JsonDict = {"turn": event.turn or {}}
+            if parsed.errors:
+                details["attachmentErrors"] = parsed.errors
+            if parsed.text or parsed.attachments or parsed.errors:
                 emitted.append(
                     self._make_event(
                         "final",
-                        text=final_text,
+                        text=parsed.text or None,
+                        attachments=parsed.attachments,
                         source_type=event.type,
-                        details={"turn": event.turn or {}},
+                        details=details,
                     )
                 )
             return emitted

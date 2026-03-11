@@ -10,9 +10,10 @@ from codex_runtime_bridge.bridge import CodexBridgeService
 
 
 class FakeConnection:
-    def __init__(self) -> None:
+    def __init__(self, *, attachment_path: str | None = None) -> None:
         self.initialized = True
         self.codex_command = "codex"
+        self.attachment_path = attachment_path
         self._subscriptions: set[asyncio.Queue[dict]] = set()
         self.request_calls: list[dict] = []
         self.thread_start_calls = 0
@@ -71,6 +72,15 @@ class FakeConnection:
                 events = [
                     self._request_approval("req_1", "rm -rf /tmp/demo"),
                     self._done(),
+                ]
+            elif prompt == "with attachment":
+                attachment_path = self.attachment_path or "/tmp/demo.txt"
+                events = [
+                    self._item_started("final_item", "final_answer"),
+                    self._delta(
+                        "final_item",
+                        f"Segue o arquivo solicitado.\n[bridge-attachment path=\"{attachment_path}\"]",
+                    ),
                 ]
             for queue in tuple(self._subscriptions):
                 for event in events:
@@ -225,6 +235,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             agents_path = workspace_dir / "AGENTS.md"
             self.assertTrue(agents_path.exists())
             self.assertIn("default workspace used by `codex-runtime-bridge`", agents_path.read_text(encoding="utf-8"))
+            self.assertIn("[bridge-attachment path=", agents_path.read_text(encoding="utf-8"))
 
         self.assertEqual(result["assistantText"], "Hello")
         self.assertEqual(
@@ -253,6 +264,19 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         service = CodexBridgeService(connection=FakeConnection())
         result = await service.chat("with commentary")
         self.assertEqual(result["assistantText"], "Answer")
+
+    async def test_chat_extracts_outbound_attachments_from_final_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            attachment_path = Path(temp_dir) / "demo.txt"
+            attachment_path.write_text("hello", encoding="utf-8")
+            service = CodexBridgeService(connection=FakeConnection(attachment_path=str(attachment_path)))
+
+            result = await service.chat("with attachment")
+
+        self.assertEqual(result["assistantText"], "Segue o arquivo solicitado.")
+        self.assertEqual(len(result["attachments"]), 1)
+        self.assertEqual(result["attachments"][0]["localPath"], str(attachment_path.resolve()))
+        self.assertEqual(result["attachments"][0]["fileName"], "demo.txt")
 
     async def test_stream_turn_passes_reasoning_summary(self) -> None:
         connection = FakeConnection()
@@ -305,6 +329,20 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(approval_event["approvalType"], "command_execution")
         self.assertEqual(approval_event["requestId"], "req_1")
         self.assertEqual(approval_event["details"]["command"], "rm -rf /tmp/demo")
+
+    async def test_stream_consumer_events_include_final_attachments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            attachment_path = Path(temp_dir) / "image.png"
+            attachment_path.write_bytes(b"png")
+            service = CodexBridgeService(connection=FakeConnection(attachment_path=str(attachment_path)))
+
+            events = [event.to_dict() async for event in service.stream_consumer_events(prompt="with attachment")]
+
+        final_event = next(event for event in events if event["event"] == "final")
+        self.assertEqual(final_event["text"], "Segue o arquivo solicitado.")
+        self.assertEqual(len(final_event["attachments"]), 1)
+        self.assertEqual(final_event["attachments"][0]["localPath"], str(attachment_path.resolve()))
+        self.assertEqual(final_event["attachments"][0]["kind"], "image")
 
     async def test_respond_server_request_uses_connection_response_channel(self) -> None:
         connection = FakeConnection()
