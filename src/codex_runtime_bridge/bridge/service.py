@@ -13,6 +13,7 @@ from .consumer_events import ConsumerEventProjector
 from .consumer_events import ConsumerStreamEvent
 from .events import BridgeEvent
 from .translator import translate_upstream_message
+from .workspace import ensure_default_workspace
 from ..transport import AppServerConnection
 from ..transport import AppServerOptions
 from ..transport import JsonDict
@@ -20,8 +21,14 @@ from ..transport import normalize_cwd
 
 
 class CodexBridgeService:
-    def __init__(self, connection: AppServerConnection | None = None) -> None:
+    def __init__(
+        self,
+        connection: AppServerConnection | None = None,
+        *,
+        default_workspace_dir: str | Path | None = None,
+    ) -> None:
         self._connection = connection or AppServerConnection(AppServerOptions())
+        self._default_workspace_dir = default_workspace_dir
 
     @property
     def codex_command(self) -> str:
@@ -34,6 +41,16 @@ class CodexBridgeService:
     @property
     def recent_stderr(self) -> list[str]:
         return self._connection.recent_stderr
+
+    @property
+    def default_workspace_dir(self) -> str:
+        return str(ensure_default_workspace(self._default_workspace_dir))
+
+    def _resolve_cwd(self, cwd: str | Path | None) -> str:
+        normalized = normalize_cwd(cwd)
+        if normalized is not None:
+            return normalized
+        return str(ensure_default_workspace(self._default_workspace_dir))
 
     async def close(self) -> None:
         await self._connection.close()
@@ -235,6 +252,8 @@ class CodexBridgeService:
                 normalized = normalize_cwd(cwd)
                 if normalized is not None:
                     normalized_cwds.append(normalized)
+        if not normalized_cwds:
+            normalized_cwds.append(self.default_workspace_dir)
 
         return await self._connection.request(
             "skills/list",
@@ -258,7 +277,7 @@ class CodexBridgeService:
         return await self._connection.request(
             "thread/start",
             {
-                "cwd": normalize_cwd(cwd),
+                "cwd": self._resolve_cwd(cwd),
                 "model": model,
                 "approvalPolicy": approval_policy,
                 "sandbox": sandbox,
@@ -334,7 +353,7 @@ class CodexBridgeService:
             "command/exec",
             {
                 "command": command,
-                "cwd": normalize_cwd(cwd),
+                "cwd": self._resolve_cwd(cwd),
                 "timeoutMs": timeout_ms,
                 "sandboxPolicy": sandbox_policy,
             },
@@ -372,7 +391,7 @@ class CodexBridgeService:
                 {
                     "threadId": thread_id,
                     "input": [{"type": "text", "text": prompt}],
-                    "cwd": normalize_cwd(cwd),
+                    "cwd": self._resolve_cwd(cwd),
                     "model": model,
                     "approvalPolicy": approval_policy,
                     "effort": effort,

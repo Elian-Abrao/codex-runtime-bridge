@@ -164,6 +164,13 @@ Run an interactive chat loop:
 codex-runtime-bridge chat --interactive
 ```
 
+By default, chat and thread operations now use a dedicated bridge workspace instead of inheriting the shell directory where the bridge process was started. That workspace lives at:
+
+- `CODEX_RUNTIME_BRIDGE_WORKSPACE_DIR`, if set
+- otherwise `~/.local/share/codex-runtime-bridge/workspace`
+
+The bridge bootstraps an `AGENTS.md` file there on first use. If you want Codex to operate inside a real project, pass `--cwd /path/to/project`.
+
 Inside interactive chat, the bridge currently supports:
 
 ```text
@@ -186,6 +193,12 @@ Start the HTTP server:
 
 ```bash
 codex-runtime-bridge serve
+```
+
+Use a custom default bridge workspace:
+
+```bash
+CODEX_RUNTIME_BRIDGE_WORKSPACE_DIR=/path/to/blank-workspace codex-runtime-bridge serve
 ```
 
 Use a non-default Codex binary:
@@ -229,6 +242,8 @@ curl -X POST http://127.0.0.1:8787/v1/threads/start \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
+
+When `cwd` is omitted, the thread starts in the dedicated bridge workspace rather than the bridge repository directory.
 
 Run chat:
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import unittest
+from pathlib import Path
 
 from codex_runtime_bridge.bridge import BridgeEvent
 from codex_runtime_bridge.bridge import CodexBridgeService
@@ -107,6 +109,12 @@ class FakeConnection:
                 "reviewThreadId": "thr_review",
                 "turn": {"id": "turn_review", "status": "inProgress"},
             }
+        if method == "command/exec":
+            return {
+                "command": (params or {}).get("command", []),
+                "cwd": (params or {}).get("cwd"),
+                "exitCode": 0,
+            }
         if method == "account/logout":
             return {"ok": True}
         raise AssertionError(f"unexpected method {method}")
@@ -197,6 +205,33 @@ class FakeConnection:
 
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_without_cwd_uses_default_workspace_and_bootstraps_agents_file(self) -> None:
+        connection = FakeConnection()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_dir = Path(temp_dir) / "workspace"
+            service = CodexBridgeService(connection=connection, default_workspace_dir=workspace_dir)
+
+            result = await service.chat("hi")
+            agents_path = workspace_dir / "AGENTS.md"
+            self.assertTrue(agents_path.exists())
+            self.assertIn("default workspace used by `codex-runtime-bridge`", agents_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result["assistantText"], "Hello")
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "thread/start",
+                "params": {
+                    "cwd": str(workspace_dir.resolve()),
+                    "model": None,
+                    "approvalPolicy": None,
+                    "sandbox": None,
+                    "personality": None,
+                    "ephemeral": None,
+                },
+            },
+        )
+
     async def test_chat_aggregates_deltas(self) -> None:
         service = CodexBridgeService(connection=FakeConnection())
         result = await service.chat("hi")
@@ -343,6 +378,49 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                     "cwds": ["/tmp/demo"],
                     "forceReload": True,
                     "perCwdExtraUserRoots": None,
+                },
+            },
+        )
+
+    async def test_list_skills_without_cwd_uses_default_workspace(self) -> None:
+        connection = FakeConnection()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_dir = Path(temp_dir) / "workspace"
+            service = CodexBridgeService(connection=connection, default_workspace_dir=workspace_dir)
+
+            result = await service.list_skills()
+
+        self.assertEqual(result["data"][0]["cwd"], str(workspace_dir.resolve()))
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "skills/list",
+                "params": {
+                    "cwds": [str(workspace_dir.resolve())],
+                    "forceReload": False,
+                    "perCwdExtraUserRoots": None,
+                },
+            },
+        )
+
+    async def test_exec_command_without_cwd_uses_default_workspace(self) -> None:
+        connection = FakeConnection()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace_dir = Path(temp_dir) / "workspace"
+            service = CodexBridgeService(connection=connection, default_workspace_dir=workspace_dir)
+
+            result = await service.exec_command(["pwd"])
+
+        self.assertEqual(result["cwd"], str(workspace_dir.resolve()))
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "command/exec",
+                "params": {
+                    "command": ["pwd"],
+                    "cwd": str(workspace_dir.resolve()),
+                    "timeoutMs": None,
+                    "sandboxPolicy": None,
                 },
             },
         )

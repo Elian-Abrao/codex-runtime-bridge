@@ -74,6 +74,7 @@ src/codex_runtime_bridge/
     events.py
     service.py
     translator.py
+    workspace.py
   http/
     api.py
     client.py
@@ -129,6 +130,7 @@ codex-runtime-bridge exec -- pwd
 
 - `codex app-server` is the upstream engine
 - this repo is the adapter layer
+- when no explicit `cwd` is provided, the bridge should use its dedicated default workspace rather than inheriting the repository directory
 - if you find yourself rebuilding upstream runtime behavior here, stop and reassess
 - a future personal agent product should consume this repository instead of replacing it
 - slash commands in this repo should prefer thin handlers over recreating CLI-only behavior end to end

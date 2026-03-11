@@ -57,6 +57,7 @@ Codex runtime on the machine
 
 - `bridge/service.py`
   - maps bridge use cases onto upstream methods
+  - resolves a dedicated default workspace when no `cwd` is provided
   - examples:
     - `account/read`
     - `account/login/start`
@@ -80,6 +81,11 @@ Codex runtime on the machine
 
 - `bridge/translator.py`
   - translates upstream JSON-RPC messages into bridge events
+
+- `bridge/workspace.py`
+  - provisions the default bridge workspace
+  - bootstraps a neutral `AGENTS.md`
+  - avoids inheriting an unrelated shell directory as the runtime cwd
 
 - `http/api.py`
   - exposes a simple HTTP layer on top of `bridge/service.py`
@@ -121,6 +127,17 @@ The bridge now exposes two streaming levels:
   - projected stable event categories such as `commentary`, `reasoning_summary`, `action`, `approval_request`, and `final`
 
 This split keeps the bridge thin while still giving downstream projects a stable contract.
+
+## Default Workspace
+
+When the caller does not provide `cwd`, the bridge intentionally does not inherit the repository directory where `codex-runtime-bridge` happens to be running.
+
+Instead it uses a dedicated local workspace:
+
+- `CODEX_RUNTIME_BRIDGE_WORKSPACE_DIR`, if configured
+- otherwise `~/.local/share/codex-runtime-bridge/workspace`
+
+That workspace is bootstrapped with a minimal `AGENTS.md` so the runtime starts in a neutral, low-surprise environment.
 
 It should not evolve toward:
 
