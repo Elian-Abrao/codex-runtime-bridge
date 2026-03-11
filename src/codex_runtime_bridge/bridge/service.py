@@ -311,6 +311,22 @@ class CodexBridgeService:
             },
         )
 
+    async def read_thread(self, thread_id: str) -> JsonDict:
+        return await self._connection.request(
+            "thread/read",
+            {
+                "threadId": thread_id,
+            },
+        )
+
+    async def resume_thread(self, thread_id: str) -> JsonDict:
+        return await self._connection.request(
+            "thread/resume",
+            {
+                "threadId": thread_id,
+            },
+        )
+
     def available_slash_commands(self) -> list[dict[str, Any]]:
         return [spec.to_dict() for spec in list_slash_commands()]
 

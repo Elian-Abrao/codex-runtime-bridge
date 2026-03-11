@@ -8,6 +8,7 @@ from unittest import mock
 
 from codex_runtime_bridge.bridge import BridgeEvent
 from codex_runtime_bridge.cli import _ChatStreamPrinter
+from codex_runtime_bridge.cli.main import main
 from codex_runtime_bridge.cli.main import _interactive_chat
 
 
@@ -159,3 +160,19 @@ class InteractiveChatTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         self.assertIn("Started new thread thr_new.", output.getvalue())
+
+
+class MainEntrypointTests(unittest.TestCase):
+    def test_main_suppresses_keyboard_interrupt_traceback(self) -> None:
+        def fake_asyncio_run(coro):
+            coro.close()
+            raise KeyboardInterrupt
+
+        with (
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=argparse.Namespace(command="serve")),
+            mock.patch("asyncio.run", side_effect=fake_asyncio_run),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                main()
+
+        self.assertEqual(raised.exception.code, 130)

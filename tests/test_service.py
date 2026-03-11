@@ -36,6 +36,16 @@ class FakeConnection:
         if method == "thread/start":
             self.thread_start_calls += 1
             return {"thread": {"id": f"thr_{self.thread_start_calls}"}}
+        if method == "thread/read":
+            return {"thread": {"id": (params or {}).get("threadId"), "status": {"type": "notLoaded"}, "turns": []}}
+        if method == "thread/resume":
+            return {
+                "thread": {
+                    "id": (params or {}).get("threadId"),
+                    "status": {"type": "idle"},
+                    "turns": [{"id": "turn_1", "status": "completed", "items": []}],
+                }
+            }
         if method == "turn/start":
             self.turn_start_calls += 1
             self.last_turn_start_params = params or {}
@@ -359,6 +369,37 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             {
                 "method": "thread/name/set",
                 "params": {"threadId": "thr_7", "name": "Demo Thread"},
+            },
+        )
+
+    async def test_read_thread_uses_official_upstream_method(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.read_thread("thr_42")
+
+        self.assertEqual(result["thread"]["id"], "thr_42")
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "thread/read",
+                "params": {"threadId": "thr_42"},
+            },
+        )
+
+    async def test_resume_thread_uses_official_upstream_method(self) -> None:
+        connection = FakeConnection()
+        service = CodexBridgeService(connection=connection)
+
+        result = await service.resume_thread("thr_42")
+
+        self.assertEqual(result["thread"]["id"], "thr_42")
+        self.assertEqual(result["thread"]["status"]["type"], "idle")
+        self.assertEqual(
+            connection.request_calls[0],
+            {
+                "method": "thread/resume",
+                "params": {"threadId": "thr_42"},
             },
         )
 

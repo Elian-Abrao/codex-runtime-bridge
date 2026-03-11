@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import suppress
 import json
 from typing import Any
 
@@ -261,4 +262,6 @@ async def run_async(args: argparse.Namespace) -> int:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(run_async(args)))
+    with suppress(KeyboardInterrupt):
+        raise SystemExit(asyncio.run(run_async(args)))
+    raise SystemExit(130)

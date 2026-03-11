@@ -101,6 +101,37 @@ class BridgeHttpClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, "app_server_unavailable")
         self.assertEqual(raised.exception.request_id, "req_http_1")
 
+    async def test_thread_read_and_resume_use_expected_paths(self) -> None:
+        captured: list[tuple[str, str]] = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            captured.append((request.method, request.url.path))
+            if request.method == "GET":
+                return httpx.Response(200, json={"thread": {"id": "thr_1", "status": {"type": "notLoaded"}}})
+            return httpx.Response(200, json={"thread": {"id": "thr_1", "status": {"type": "idle"}}})
+
+        transport = httpx.MockTransport(handler)
+        client = BridgeHttpClient("http://bridge.test")
+        client._client = httpx.AsyncClient(
+            base_url="http://bridge.test",
+            timeout=120.0,
+            transport=transport,
+        )
+        self.addAsyncCleanup(client.close)
+
+        read_result = await client.read_thread("thr_1")
+        resume_result = await client.resume_thread("thr_1")
+
+        self.assertEqual(read_result["thread"]["status"]["type"], "notLoaded")
+        self.assertEqual(resume_result["thread"]["status"]["type"], "idle")
+        self.assertEqual(
+            captured,
+            [
+                ("GET", "/v1/threads/thr_1"),
+                ("POST", "/v1/threads/thr_1/resume"),
+            ],
+        )
+
     async def test_respond_server_request_posts_expected_payload(self) -> None:
         captured: dict[str, object] = {}
 

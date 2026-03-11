@@ -96,6 +96,12 @@ class BridgeHttpClient:
     async def start_thread(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return await self._request_json("POST", "/v1/threads/start", json=payload or {})
 
+    async def read_thread(self, thread_id: str) -> dict[str, Any]:
+        return await self._request_json("GET", f"/v1/threads/{thread_id}")
+
+    async def resume_thread(self, thread_id: str) -> dict[str, Any]:
+        return await self._request_json("POST", f"/v1/threads/{thread_id}/resume")
+
     async def chat(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         payload = {"prompt": prompt, **kwargs}
         return await self._request_json("POST", "/v1/chat", json=payload)

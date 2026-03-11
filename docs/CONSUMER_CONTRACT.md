@@ -13,6 +13,13 @@ The bridge now exposes two streaming shapes:
   - stable projected events for downstream apps
   - recommended for gateways, bots, and remote clients
 
+The bridge also exposes official thread lifecycle helpers that are useful for reconnect and recovery flows:
+
+- `GET /v1/threads/{thread_id}`
+  - thin wrapper over upstream `thread/read`
+- `POST /v1/threads/{thread_id}/resume`
+  - thin wrapper over upstream `thread/resume`
+
 ## Request Correlation
 
 Every HTTP response includes `X-Request-ID`.
@@ -38,6 +45,15 @@ This applies to:
 
 - `GET /v1/health`
   - structured bridge health
+
+## Thread Recovery Endpoints
+
+- `GET /v1/threads/{thread_id}`
+  - returns the current thread snapshot without forcing it loaded
+
+- `POST /v1/threads/{thread_id}/resume`
+  - loads or refreshes the thread snapshot from the runtime
+  - useful after a client reconnects or restarts and needs to inspect the latest completed turn
 
 ## Standard Error Shape
 
@@ -201,4 +217,5 @@ For external apps:
 2. send `X-Request-ID` for traceability
 3. prefer `/v1/chat/consumer-stream` over `/v1/chat/stream`
 4. use `/v1/server-requests/respond` for approvals and other runtime requests
-5. keep `/v1/chat/stream` only for debugging or when raw event fidelity is required
+5. use `/v1/threads/{thread_id}/resume` when a client needs to recover the latest thread state after restart
+6. keep `/v1/chat/stream` only for debugging or when raw event fidelity is required

@@ -160,6 +160,14 @@ def create_app(service: CodexBridgeService | None = None) -> FastAPI:
             ephemeral=request.ephemeral,
         )
 
+    @app.get("/v1/threads/{thread_id}")
+    async def thread_read(thread_id: str) -> dict[str, Any]:
+        return await bridge.read_thread(thread_id)
+
+    @app.post("/v1/threads/{thread_id}/resume")
+    async def thread_resume(thread_id: str) -> dict[str, Any]:
+        return await bridge.resume_thread(thread_id)
+
     @app.post("/v1/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest) -> dict[str, Any]:
         return await bridge.chat(

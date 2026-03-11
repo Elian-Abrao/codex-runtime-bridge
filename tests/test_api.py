@@ -48,6 +48,12 @@ class FakeApiService:
     async def start_thread(self, **_: object) -> dict[str, object]:
         return {"thread": {"id": "thr_1"}}
 
+    async def read_thread(self, thread_id: str) -> dict[str, object]:
+        return {"thread": {"id": thread_id, "status": {"type": "notLoaded"}, "turns": []}}
+
+    async def resume_thread(self, thread_id: str) -> dict[str, object]:
+        return {"thread": {"id": thread_id, "status": {"type": "idle"}, "turns": []}}
+
     async def chat(self, prompt: str, **_: object) -> dict[str, object]:
         return {"threadId": "thr_1", "turnId": "turn_1", "assistantText": prompt, "turn": {}, "events": []}
 
@@ -116,6 +122,15 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"event": "status"', body)
         self.assertIn("event: final", body)
         self.assertIn('"text": "All good."', body)
+
+    async def test_thread_read_and_resume_routes_delegate_to_service(self) -> None:
+        read_response = await self.client.get("/v1/threads/thr_demo")
+        resume_response = await self.client.post("/v1/threads/thr_demo/resume")
+
+        self.assertEqual(read_response.status_code, 200)
+        self.assertEqual(read_response.json()["thread"]["id"], "thr_demo")
+        self.assertEqual(resume_response.status_code, 200)
+        self.assertEqual(resume_response.json()["thread"]["status"]["type"], "idle")
 
     async def test_http_errors_are_standardized(self) -> None:
         self.service.raise_account_error = True

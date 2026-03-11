@@ -86,6 +86,7 @@ The repository already has a functional first vertical slice:
 - start ChatGPT login through Codex's native auth flow
 - list models from the real runtime
 - start threads
+- read and resume existing threads
 - run turns and stream real turn events
 - surface upstream server requests such as approvals and tool input prompts
 - expose a first bridge-level slash command layer for interactive use
@@ -245,6 +246,18 @@ curl -X POST http://127.0.0.1:8787/v1/threads/start \
 
 When `cwd` is omitted, the thread starts in the dedicated bridge workspace rather than the bridge repository directory.
 
+Read a thread snapshot:
+
+```bash
+curl http://127.0.0.1:8787/v1/threads/<thread-id>
+```
+
+Load or refresh a thread snapshot from the runtime:
+
+```bash
+curl -X POST http://127.0.0.1:8787/v1/threads/<thread-id>/resume
+```
+
 Run chat:
 
 ```bash
@@ -299,6 +312,7 @@ Recommended downstream-consumer behavior:
 - use `/readyz` for readiness probes
 - send `X-Request-ID` on every request
 - prefer `/v1/chat/consumer-stream` over the raw stream
+- use `/v1/threads/<thread-id>/resume` when a client needs to recover thread state after reconnect or restart
 - treat `/v1/chat/stream` as a low-level compatibility path
 - expect standardized error envelopes on non-streaming HTTP failures
 
